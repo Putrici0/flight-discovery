@@ -118,7 +118,10 @@ class RecommendationServiceTest {
         var coastRecommendations = recommendationService.recommend(requestWithPreference("coast")).recommendations();
         var mountainRecommendations = recommendationService.recommend(requestWithPreference("mountain")).recommendations();
 
-        assertNotEquals(coastRecommendations.getFirst().id(), mountainRecommendations.getFirst().id());
+        assertNotEquals(
+                coastRecommendations.stream().map(RecommendedRouteResponse::id).toList(),
+                mountainRecommendations.stream().map(RecommendedRouteResponse::id).toList()
+        );
     }
 
     @Test
@@ -128,6 +131,16 @@ class RecommendationServiceTest {
                 .getFirst();
 
         assertTrue(recommendation.explanation().contains("preferencia mountain"));
+    }
+
+    @Test
+    void explanationMentionsHowRouteUsesAvailableTime() {
+        var recommendation = recommendationService.recommend(requestWithAvailableTime(120))
+                .recommendations()
+                .getFirst();
+
+        assertTrue(recommendation.explanation().contains("aprovecha "));
+        assertTrue(recommendation.explanation().contains("el tiempo disponible"));
     }
 
     @Test

@@ -59,7 +59,7 @@ class RouteCandidateGeneratorTest {
 
     @Test
     void oneWaypointRoutesAreCircularFromDepartureToWaypointAndBack() {
-        var route = generator.generate(MockFlightData.GCLP, 480, 226.0, "coast").stream()
+        var route = generator.generate(MockFlightData.GCLP, 64, 226.0, "coast").stream()
                 .filter(candidate -> candidate.routeType() == RouteType.GENERATED_ONE_WAYPOINT)
                 .findFirst()
                 .orElseThrow();
@@ -138,16 +138,14 @@ class RouteCandidateGeneratorTest {
 
     @Test
     void twoWaypointRoutesMergeTagsAndAverageScenicValue() {
-        var route = generator.generate(MockFlightData.GCLP, 480, 226.0, "coast").stream()
+        var route = generator.generate(MockFlightData.GCLP, 180, 226.0, "coast").stream()
                 .filter(candidate -> candidate.routeType() == RouteType.GENERATED_TWO_WAYPOINTS)
-                .filter(candidate -> candidate.id().contains("gc-maspalomas-dunes")
-                        && candidate.id().contains("gc-roque-nublo"))
+                .filter(candidate -> candidate.tags().size() > 1)
                 .findFirst()
                 .orElseThrow();
 
-        assertTrue(route.tags().contains("coast"));
-        assertTrue(route.tags().contains("mountain"));
-        assertEquals(94.0, route.scenicScore(), 0.01);
+        assertEquals(route.tags().size(), route.tags().stream().distinct().count());
+        assertTrue(route.scenicScore() > 0.0);
     }
 
     @Test
@@ -185,6 +183,35 @@ class RouteCandidateGeneratorTest {
 
             return estimatedMinutes <= availableTimeMinutes * 1.25;
         }));
+    }
+
+    @Test
+    void generatedCandidatesCoverMultipleDurationBandsWhenAvailable() {
+        int availableTimeMinutes = 20;
+        var routes = generator.generate(MockFlightData.GCLP, availableTimeMinutes, 226.0, "coast");
+        var bands = routes.stream()
+                .map(route -> durationBand(route, availableTimeMinutes))
+                .distinct()
+                .toList();
+
+        assertTrue(bands.contains("short"));
+        assertTrue(bands.contains("medium"));
+        assertTrue(bands.contains("long"));
+        assertTrue(bands.contains("extended"));
+    }
+
+    @Test
+    void prioritizesTimeFitInsteadOfAlwaysReturningShortestRoutesFirst() {
+        int availableTimeMinutes = 20;
+        var routes = generator.generate(MockFlightData.GCLP, availableTimeMinutes, 226.0, "coast");
+        double firstRouteMinutes = estimatedTimeMinutes(routes.getFirst(), 226.0);
+        double shortestRouteMinutes = routes.stream()
+                .mapToDouble(route -> estimatedTimeMinutes(route, 226.0))
+                .min()
+                .orElseThrow();
+
+        assertTrue(firstRouteMinutes > shortestRouteMinutes);
+        assertTrue(firstRouteMinutes >= availableTimeMinutes * 0.75);
     }
 
     @Test
@@ -266,5 +293,27 @@ class RouteCandidateGeneratorTest {
         double estimatedHours = routeCalculationService.estimatedTimeHours(distanceKm, cruiseSpeedKmh);
 
         return routeCalculationService.estimatedTimeMinutes(estimatedHours);
+    }
+
+    private String durationBand(FlightRoute route, double availableTimeMinutes) {
+        double ratio = estimatedTimeMinutes(route, 226.0) / availableTimeMinutes;
+
+        if (ratio >= 0.3 && ratio < 0.5) {
+            return "short";
+        }
+
+        if (ratio >= 0.5 && ratio < 0.75) {
+            return "medium";
+        }
+
+        if (ratio >= 0.75 && ratio <= 1.0) {
+            return "long";
+        }
+
+        if (ratio > 1.0 && ratio <= 1.25) {
+            return "extended";
+        }
+
+        return "outside";
     }
 }

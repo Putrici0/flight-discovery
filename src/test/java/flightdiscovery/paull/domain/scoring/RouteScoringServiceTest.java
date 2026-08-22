@@ -23,18 +23,59 @@ class RouteScoringServiceTest {
         RouteScore score = scoringService.score(route, 90.0, 120, 100.0, "coast", 80.0);
 
         assertEquals(80.0, score.weatherScore(), 0.01);
-        assertEquals(86.5, score.timeFitScore(), 0.01);
+        assertEquals(90.0, score.timeFitScore(), 0.01);
         assertEquals(100.0, score.preferenceScore(), 0.01);
         assertEquals(80.0, score.scenicScore(), 0.01);
         assertEquals(60.0, score.costScore(), 0.01);
-        assertEquals(84.95, score.totalScore(), 0.01);
+        assertEquals(86.0, score.totalScore(), 0.01);
+    }
+
+    @Test
+    void givesHighestTimeFitNearTargetDuration() {
+        double targetTimeFitScore = scoringService.timeFitScore(102.0, 120);
+        double shorterHighTimeFitScore = scoringService.timeFitScore(84.0, 120);
+        double longerHighTimeFitScore = scoringService.timeFitScore(120.0, 120);
+
+        assertEquals(100.0, targetTimeFitScore, 0.01);
+        assertTrue(targetTimeFitScore > shorterHighTimeFitScore);
+        assertTrue(targetTimeFitScore > longerHighTimeFitScore);
     }
 
     @Test
     void givesStrongTimeFitWhenRouteUsesMostAvailableTime() {
         double timeFitScore = scoringService.timeFitScore(110.0, 120);
 
-        assertEquals(70.0, timeFitScore, 0.01);
+        assertEquals(93.33, timeFitScore, 0.01);
+    }
+
+    @Test
+    void givesMediumTimeFitWhenRouteUsesHalfToSeventyPercentOfAvailableTime() {
+        assertEquals(47.5, scoringService.timeFitScore(60.0, 120), 0.01);
+        assertEquals(55.0, scoringService.timeFitScore(72.0, 120), 0.01);
+        assertEquals(62.5, scoringService.timeFitScore(78.0, 120), 0.01);
+    }
+
+    @Test
+    void penalizesNonShortRoutesHeavilyWhenTheyUseLessThanFortyPercentOfAvailableTime() {
+        double timeFitScore = scoringService.timeFitScore(36.0, 120, "coast");
+
+        assertEquals(22.5, timeFitScore, 0.01);
+    }
+
+    @Test
+    void penalizesNonShortRoutesModeratelyWhenTheyUseLessThanSixtyPercentOfAvailableTime() {
+        double timeFitScore = scoringService.timeFitScore(48.0, 120, "coast");
+
+        assertEquals(40.0, timeFitScore, 0.01);
+    }
+
+    @Test
+    void allowsShortPreferenceToScoreVeryShortRoutesBetter() {
+        double shortPreferenceScore = scoringService.timeFitScore(48.0, 120, "short");
+        double defaultPreferenceScore = scoringService.timeFitScore(48.0, 120, "coast");
+
+        assertEquals(85.0, shortPreferenceScore, 0.01);
+        assertTrue(shortPreferenceScore > defaultPreferenceScore);
     }
 
     @Test
@@ -42,6 +83,13 @@ class RouteScoringServiceTest {
         double timeFitScore = scoringService.timeFitScore(150.0, 120);
 
         assertEquals(15.0, timeFitScore, 0.01);
+    }
+
+    @Test
+    void discardsTimeFitWhenRouteExceedsAvailableTimeByMoreThanTwentyFivePercent() {
+        double timeFitScore = scoringService.timeFitScore(151.0, 120);
+
+        assertEquals(0.0, timeFitScore, 0.01);
     }
 
     @Test

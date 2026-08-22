@@ -15,6 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import flightdiscovery.paull.api.recommendation.RecommendationRequest;
 import flightdiscovery.paull.api.recommendation.RecommendationResponse;
+import flightdiscovery.paull.api.recommendation.RecommendationCandidateDebug;
 import flightdiscovery.paull.api.recommendation.RecommendationDebugInfo;
 import flightdiscovery.paull.api.recommendation.RecommendationDevelopmentDebugResponse;
 import flightdiscovery.paull.api.recommendation.RecommendationRouteDiscardDebug;
@@ -194,6 +195,12 @@ public class RecommendationService {
                         round(usefulAvailableTimeMinutes * MAX_ALLOWED_TIME_OVERRUN_RATIO)
                 ))
                 .toList());
+        List<RecommendationCandidateDebug> candidates = candidateDebugRows(
+                scoredRoutes,
+                generationResult.discardedRoutes(),
+                discards,
+                viableRecommendations
+        );
 
         return new RecommendationDevelopmentDebugResponse(
                 request,
@@ -203,8 +210,64 @@ public class RecommendationService {
                 generationResult.generatedCandidateRoutes(),
                 discards.size(),
                 viableRecommendations.size(),
+                candidates,
                 discards,
                 viableRecommendations
+        );
+    }
+
+    private List<RecommendationCandidateDebug> candidateDebugRows(
+            List<ScoredRoute> scoredRoutes,
+            List<RouteCandidateDiscard> generationDiscards,
+            List<RecommendationRouteDiscardDebug> discards,
+            List<RecommendedRouteResponse> viableRecommendations
+    ) {
+        List<RecommendationCandidateDebug> candidates = new ArrayList<>();
+        candidates.addAll(scoredRoutes.stream()
+                .map(scoredRoute -> toCandidateDebug(scoredRoute, discards, viableRecommendations))
+                .toList());
+        candidates.addAll(generationDiscards.stream()
+                .map(discard -> new RecommendationCandidateDebug(
+                        discard.route().id(),
+                        discard.route().name(),
+                        discard.route().routeType(),
+                        discard.estimatedTimeMinutes(),
+                        null,
+                        null,
+                        null,
+                        true,
+                        "GENERATION",
+                        discard.reason()
+                ))
+                .toList());
+
+        return candidates;
+    }
+
+    private RecommendationCandidateDebug toCandidateDebug(
+            ScoredRoute scoredRoute,
+            List<RecommendationRouteDiscardDebug> discards,
+            List<RecommendedRouteResponse> viableRecommendations
+    ) {
+        RecommendedRouteResponse recommendation = scoredRoute.recommendation();
+        RecommendationRouteDiscardDebug discard = discards.stream()
+                .filter(candidateDiscard -> candidateDiscard.routeId().equals(recommendation.id()))
+                .findFirst()
+                .orElse(null);
+        boolean selected = viableRecommendations.stream()
+                .anyMatch(finalRecommendation -> finalRecommendation.id().equals(recommendation.id()));
+
+        return new RecommendationCandidateDebug(
+                recommendation.id(),
+                recommendation.name(),
+                recommendation.routeType(),
+                recommendation.estimatedTimeMinutes(),
+                recommendation.totalScore(),
+                recommendation.scoreBreakdown().timeFitScore(),
+                recommendation.scoreBreakdown().costScore(),
+                !selected,
+                discard == null ? null : discard.stage(),
+                discard == null ? null : discard.reason()
         );
     }
 
@@ -457,16 +520,22 @@ public class RecommendationService {
     }
 
     private String timeFitText(double estimatedTimeMinutes, double availableTimeMinutes) {
-        if (estimatedTimeMinutes <= availableTimeMinutes * 0.65) {
-            return "deja bastante margen respecto al tiempo disponible";
+        if (availableTimeMinutes <= 0.0) {
+            return "no puede evaluarse contra el tiempo disponible";
         }
 
-        if (estimatedTimeMinutes <= availableTimeMinutes) {
-            return "encaja bien con el tiempo disponible";
+        double usageRatio = estimatedTimeMinutes / availableTimeMinutes;
+
+        if (usageRatio < 0.7) {
+            return "aprovecha poco el tiempo disponible";
         }
 
-        if (estimatedTimeMinutes <= availableTimeMinutes * 1.15) {
-            return "supera ligeramente el tiempo disponible";
+        if (usageRatio <= 1.0) {
+            return "aprovecha bien el tiempo disponible";
+        }
+
+        if (usageRatio <= MAX_ALLOWED_TIME_OVERRUN_RATIO) {
+            return "aprovecha demasiado el tiempo disponible";
         }
 
         return "supera demasiado el tiempo disponible";

@@ -19,7 +19,7 @@ public class RouteScoringService {
             double weatherScore
     ) {
         double normalizedWeatherScore = clampScore(weatherScore);
-        double timeFitScore = timeFitScore(estimatedTimeMinutes, availableTimeMinutes);
+        double timeFitScore = timeFitScore(estimatedTimeMinutes, availableTimeMinutes, preference);
         double preferenceScore = preferenceScore(route, preference);
         double scenicScore = scenicScore(route);
         double costScore = costScore(estimatedCost);
@@ -40,34 +40,47 @@ public class RouteScoringService {
     }
 
     public double timeFitScore(double estimatedTimeMinutes, double availableTimeMinutes) {
+        return timeFitScore(estimatedTimeMinutes, availableTimeMinutes, null);
+    }
+
+    public double timeFitScore(double estimatedTimeMinutes, double availableTimeMinutes, String preference) {
         if (availableTimeMinutes <= 0) {
             return 0.0;
         }
 
         double usageRatio = estimatedTimeMinutes / availableTimeMinutes;
+        double targetDurationMinutes = availableTimeMinutes * 0.85;
 
         if (usageRatio <= 0.0) {
             return 0.0;
         }
 
-        if (usageRatio <= 0.85) {
-            double distanceFromIdeal = Math.abs(usageRatio - 0.60);
-            return Math.max(60.0, 100.0 - distanceFromIdeal * 90.0);
+        if (usageRatio > 1.25) {
+            return 0.0;
+        }
+
+        if (isShortPreference(preference) && usageRatio < 0.7) {
+            return 85.0;
+        }
+
+        if (usageRatio < 0.4) {
+            return 15.0 + usageRatio / 0.4 * 10.0;
+        }
+
+        if (usageRatio < 0.6) {
+            return 40.0 + (usageRatio - 0.4) / 0.2 * 15.0;
+        }
+
+        if (usageRatio < 0.7) {
+            return 55.0 + (usageRatio - 0.6) / 0.1 * 15.0;
         }
 
         if (usageRatio <= 1.0) {
-            return 78.0 - (usageRatio - 0.85) * 120.0;
+            double distanceFromTargetRatio = Math.abs(estimatedTimeMinutes - targetDurationMinutes) / availableTimeMinutes;
+            return 100.0 - distanceFromTargetRatio / 0.15 * 15.0;
         }
 
-        if (usageRatio <= 1.15) {
-            return 45.0 - (usageRatio - 1.0) * 160.0;
-        }
-
-        if (usageRatio <= 1.5) {
-            return 21.0 - (usageRatio - 1.15) * 60.0;
-        }
-
-        return 0.0;
+        return 70.0 - (usageRatio - 1.0) / 0.25 * 55.0;
     }
 
     public double costScore(double estimatedCost) {
@@ -103,5 +116,9 @@ public class RouteScoringService {
 
     private double clampScore(double value) {
         return Math.max(0.0, Math.min(100.0, value));
+    }
+
+    private boolean isShortPreference(String preference) {
+        return preference != null && preference.trim().equalsIgnoreCase("short");
     }
 }

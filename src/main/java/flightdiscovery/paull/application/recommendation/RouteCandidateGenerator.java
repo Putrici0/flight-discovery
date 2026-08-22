@@ -21,6 +21,7 @@ public class RouteCandidateGenerator {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(RouteCandidateGenerator.class);
     private static final double MAX_ALLOWED_TIME_OVERRUN_RATIO = 1.25;
+    private static final double TARGET_DURATION_RATIO = 0.85;
     private static final int MAX_GENERATED_ROUTES = 30;
     private static final double PREFERRED_ROUTE_RATIO = 0.80;
     private static final String TIME_DISCARD_REASON = "Estimated route time exceeds useful available time plus 25% tolerance";
@@ -64,13 +65,13 @@ public class RouteCandidateGenerator {
         candidates.addAll(twoWaypointRoutes(departureAirport, prioritizedWaypoints));
 
         List<RouteCandidateDiscard> discardedCandidates = new ArrayList<>();
-        List<FlightRoute> timeViableCandidates = new ArrayList<>();
+        List<TimedRouteCandidate> timeViableCandidates = new ArrayList<>();
         for (FlightRoute candidate : candidates) {
             double estimatedTimeMinutes = estimatedTimeMinutes(candidate, cruiseSpeedKmh);
             double limitMinutes = availableTimeMinutes * MAX_ALLOWED_TIME_OVERRUN_RATIO;
 
             if (estimatedTimeMinutes <= limitMinutes) {
-                timeViableCandidates.add(candidate);
+                timeViableCandidates.add(new TimedRouteCandidate(candidate, estimatedTimeMinutes, bandFor(estimatedTimeMinutes, availableTimeMinutes)));
             } else {
                 discardedCandidates.add(new RouteCandidateDiscard(
                         candidate,
@@ -83,19 +84,22 @@ public class RouteCandidateGenerator {
         LOGGER.info("Recommendation diagnostics: generatedCandidates={} discardedGeneratedCandidatesByTime={} timeViableGeneratedCandidates={}",
                 candidates.size(), candidates.size() - timeViableCandidates.size(), timeViableCandidates.size());
 
-        List<FlightRoute> limitedCandidates = limitCandidates(timeViableCandidates, preference);
+        List<TimedRouteCandidate> limitedCandidates = limitCandidates(timeViableCandidates, preference, availableTimeMinutes);
+        List<FlightRoute> limitedRoutes = limitedCandidates.stream()
+                .map(TimedRouteCandidate::route)
+                .toList();
         SetUtils.notSelected(timeViableCandidates, limitedCandidates).stream()
                 .map(route -> new RouteCandidateDiscard(
-                        route,
+                        route.route(),
                         CANDIDATE_LIMIT_DISCARD_REASON,
-                        round(estimatedTimeMinutes(route, cruiseSpeedKmh)),
+                        round(route.estimatedTimeMinutes()),
                         round(availableTimeMinutes * MAX_ALLOWED_TIME_OVERRUN_RATIO)
                 ))
                 .forEach(discardedCandidates::add);
-        LOGGER.info("Recommendation diagnostics: returnedGeneratedCandidatesAfterLimit={}", limitedCandidates.size());
+        LOGGER.info("Recommendation diagnostics: returnedGeneratedCandidatesAfterLimit={}", limitedRoutes.size());
 
         return new RouteGenerationResult(
-                limitedCandidates,
+                limitedRoutes,
                 prioritizedWaypoints.size(),
                 candidates.size(),
                 candidates.size() - timeViableCandidates.size(),
@@ -121,41 +125,159 @@ public class RouteCandidateGenerator {
         return routes;
     }
 
-    private List<FlightRoute> limitCandidates(List<FlightRoute> candidates, String preference) {
+    private List<TimedRouteCandidate> limitCandidates(
+            List<TimedRouteCandidate> candidates,
+            String preference,
+            double availableTimeMinutes
+    ) {
         if (preference == null || preference.isBlank()) {
-            return candidates.stream()
-                    .sorted(routeComparator(preference))
-                    .limit(MAX_GENERATED_ROUTES)
-                    .toList();
+            return balancedCandidates(candidates, preference, availableTimeMinutes);
         }
 
-        List<FlightRoute> preferredRoutes = candidates.stream()
-                .filter(route -> routeMatchesPreference(route, preference))
-                .sorted(routeComparator(preference))
+        List<TimedRouteCandidate> preferredRoutes = candidates.stream()
+                .filter(candidate -> routeMatchesPreference(candidate.route(), preference))
                 .toList();
-        List<FlightRoute> alternativeRoutes = candidates.stream()
-                .filter(route -> !routeMatchesPreference(route, preference))
-                .sorted(routeComparator(preference))
+        List<TimedRouteCandidate> alternativeRoutes = candidates.stream()
+                .filter(candidate -> !routeMatchesPreference(candidate.route(), preference))
                 .toList();
         int preferredTarget = (int) Math.round(MAX_GENERATED_ROUTES * PREFERRED_ROUTE_RATIO);
         int alternativeTarget = MAX_GENERATED_ROUTES - preferredTarget;
 
-        List<FlightRoute> selectedRoutes = new ArrayList<>();
-        addRoutes(selectedRoutes, preferredRoutes, preferredTarget);
-        addRoutes(selectedRoutes, alternativeRoutes, alternativeTarget);
-        addRoutes(selectedRoutes, preferredRoutes, MAX_GENERATED_ROUTES - selectedRoutes.size());
-        addRoutes(selectedRoutes, alternativeRoutes, MAX_GENERATED_ROUTES - selectedRoutes.size());
+        List<TimedRouteCandidate> selectedRoutes = new ArrayList<>();
+        addRoutes(selectedRoutes, balancedCandidates(preferredRoutes, preference, availableTimeMinutes), preferredTarget);
+        addRoutes(selectedRoutes, balancedCandidates(alternativeRoutes, preference, availableTimeMinutes), alternativeTarget);
+        addRoutes(selectedRoutes, balancedCandidates(preferredRoutes, preference, availableTimeMinutes), MAX_GENERATED_ROUTES - selectedRoutes.size());
+        addRoutes(selectedRoutes, balancedCandidates(alternativeRoutes, preference, availableTimeMinutes), MAX_GENERATED_ROUTES - selectedRoutes.size());
 
-        return selectedRoutes;
+        return ensureRouteTypeVariety(selectedRoutes, candidates, preference, availableTimeMinutes);
     }
 
-    private void addRoutes(List<FlightRoute> selectedRoutes, List<FlightRoute> candidates, int limit) {
+    private List<TimedRouteCandidate> balancedCandidates(
+            List<TimedRouteCandidate> candidates,
+            String preference,
+            double availableTimeMinutes
+    ) {
+        List<TimedRouteCandidate> selectedRoutes = new ArrayList<>();
+        int longTarget = Math.max(1, (int) Math.round(MAX_GENERATED_ROUTES * 0.40));
+        int mediumTarget = Math.max(1, (int) Math.round(MAX_GENERATED_ROUTES * 0.25));
+        int extendedTarget = Math.max(1, (int) Math.round(MAX_GENERATED_ROUTES * 0.20));
+        int shortTarget = MAX_GENERATED_ROUTES - longTarget - mediumTarget - extendedTarget;
+
+        addBandRoutes(selectedRoutes, candidates, DurationBand.LONG, longTarget, preference, availableTimeMinutes);
+        addBandRoutes(selectedRoutes, candidates, DurationBand.MEDIUM, mediumTarget, preference, availableTimeMinutes);
+        addBandRoutes(selectedRoutes, candidates, DurationBand.EXTENDED, extendedTarget, preference, availableTimeMinutes);
+        addBandRoutes(selectedRoutes, candidates, DurationBand.SHORT, shortTarget, preference, availableTimeMinutes);
+        addRoutes(
+                selectedRoutes,
+                sortedCandidates(candidates, preference, availableTimeMinutes),
+                MAX_GENERATED_ROUTES - selectedRoutes.size()
+        );
+
+        return ensureRouteTypeVariety(selectedRoutes, candidates, preference, availableTimeMinutes);
+    }
+
+    private List<TimedRouteCandidate> ensureRouteTypeVariety(
+            List<TimedRouteCandidate> selectedRoutes,
+            List<TimedRouteCandidate> candidates,
+            String preference,
+            double availableTimeMinutes
+    ) {
+        List<TimedRouteCandidate> variedRoutes = new ArrayList<>(selectedRoutes);
+        ensureBand(variedRoutes, candidates, DurationBand.LONG, preference, availableTimeMinutes);
+        ensureBand(variedRoutes, candidates, DurationBand.MEDIUM, preference, availableTimeMinutes);
+        ensureBand(variedRoutes, candidates, DurationBand.EXTENDED, preference, availableTimeMinutes);
+        ensureBand(variedRoutes, candidates, DurationBand.SHORT, preference, availableTimeMinutes);
+        ensureRouteType(variedRoutes, candidates, RouteType.GENERATED_ONE_WAYPOINT, preference, availableTimeMinutes);
+        ensureRouteType(variedRoutes, candidates, RouteType.GENERATED_TWO_WAYPOINTS, preference, availableTimeMinutes);
+
+        return variedRoutes;
+    }
+
+    private void ensureBand(
+            List<TimedRouteCandidate> selectedRoutes,
+            List<TimedRouteCandidate> candidates,
+            DurationBand band,
+            String preference,
+            double availableTimeMinutes
+    ) {
+        boolean alreadySelected = selectedRoutes.stream()
+                .anyMatch(candidate -> candidate.band() == band);
+        if (alreadySelected) {
+            return;
+        }
+
+        TimedRouteCandidate replacement = sortedCandidates(candidates, preference, availableTimeMinutes).stream()
+                .filter(candidate -> candidate.band() == band)
+                .findFirst()
+                .orElse(null);
+        if (replacement == null) {
+            return;
+        }
+
+        addOrReplaceLast(selectedRoutes, replacement);
+    }
+
+    private void ensureRouteType(
+            List<TimedRouteCandidate> selectedRoutes,
+            List<TimedRouteCandidate> candidates,
+            RouteType routeType,
+            String preference,
+            double availableTimeMinutes
+    ) {
+        boolean alreadySelected = selectedRoutes.stream()
+                .anyMatch(candidate -> candidate.route().routeType() == routeType);
+        if (alreadySelected) {
+            return;
+        }
+
+        TimedRouteCandidate replacement = sortedCandidates(candidates, preference, availableTimeMinutes).stream()
+                .filter(candidate -> candidate.route().routeType() == routeType)
+                .findFirst()
+                .orElse(null);
+        if (replacement == null) {
+            return;
+        }
+
+        addOrReplaceLast(selectedRoutes, replacement);
+    }
+
+    private void addOrReplaceLast(List<TimedRouteCandidate> selectedRoutes, TimedRouteCandidate replacement) {
+        if (selectedRoutes.stream().anyMatch(selected -> selected.route().id().equals(replacement.route().id()))) {
+            return;
+        }
+
+        if (selectedRoutes.size() < MAX_GENERATED_ROUTES) {
+            selectedRoutes.add(replacement);
+            return;
+        }
+        selectedRoutes.removeLast();
+        selectedRoutes.add(replacement);
+    }
+
+    private void addBandRoutes(
+            List<TimedRouteCandidate> selectedRoutes,
+            List<TimedRouteCandidate> candidates,
+            DurationBand band,
+            int limit,
+            String preference,
+            double availableTimeMinutes
+    ) {
+        addRoutes(
+                selectedRoutes,
+                sortedCandidates(candidates, preference, availableTimeMinutes).stream()
+                        .filter(candidate -> candidate.band() == band)
+                        .toList(),
+                limit
+        );
+    }
+
+    private void addRoutes(List<TimedRouteCandidate> selectedRoutes, List<TimedRouteCandidate> candidates, int limit) {
         if (limit <= 0) {
             return;
         }
 
         candidates.stream()
-                .filter(candidate -> selectedRoutes.stream().noneMatch(selected -> selected.id().equals(candidate.id())))
+                .filter(candidate -> selectedRoutes.stream().noneMatch(selected -> selected.route().id().equals(candidate.route().id())))
                 .limit(limit)
                 .forEach(selectedRoutes::add);
     }
@@ -204,6 +326,32 @@ public class RouteCandidateGenerator {
         return estimatedTimeMinutes(route, cruiseSpeedKmh) <= availableTimeMinutes * MAX_ALLOWED_TIME_OVERRUN_RATIO;
     }
 
+    private DurationBand bandFor(double estimatedTimeMinutes, double availableTimeMinutes) {
+        if (availableTimeMinutes <= 0.0) {
+            return DurationBand.TOO_SHORT;
+        }
+
+        double usageRatio = estimatedTimeMinutes / availableTimeMinutes;
+
+        if (usageRatio >= 0.3 && usageRatio < 0.5) {
+            return DurationBand.SHORT;
+        }
+
+        if (usageRatio >= 0.5 && usageRatio < 0.75) {
+            return DurationBand.MEDIUM;
+        }
+
+        if (usageRatio >= 0.75 && usageRatio <= 1.0) {
+            return DurationBand.LONG;
+        }
+
+        if (usageRatio > 1.0 && usageRatio <= MAX_ALLOWED_TIME_OVERRUN_RATIO) {
+            return DurationBand.EXTENDED;
+        }
+
+        return DurationBand.TOO_SHORT;
+    }
+
     private double estimatedTimeMinutes(FlightRoute route, double cruiseSpeedKmh) {
         double distanceKm = routeCalculationService.totalDistanceKm(route);
         double estimatedTimeHours = routeCalculationService.estimatedTimeHours(distanceKm, cruiseSpeedKmh);
@@ -244,11 +392,58 @@ public class RouteCandidateGenerator {
                 .thenComparing(VisualWaypoint::scenicValue, Comparator.reverseOrder());
     }
 
-    private Comparator<FlightRoute> routeComparator(String preference) {
+    private List<TimedRouteCandidate> sortedCandidates(
+            List<TimedRouteCandidate> candidates,
+            String preference,
+            double availableTimeMinutes
+    ) {
+        return candidates.stream()
+                .sorted(routeComparator(preference, availableTimeMinutes))
+                .toList();
+    }
+
+    private Comparator<TimedRouteCandidate> routeComparator(String preference, double availableTimeMinutes) {
         return Comparator
-                .comparing((FlightRoute route) -> routeMatchesPreference(route, preference)).reversed()
-                .thenComparing(FlightRoute::scenicScore, Comparator.reverseOrder())
-                .thenComparing(route -> route.waypoints().size());
+                .comparing((TimedRouteCandidate candidate) -> candidate.band().priority())
+                .thenComparingDouble(candidate -> timeFitDistance(candidate, availableTimeMinutes))
+                .thenComparing(Comparator.comparing(
+                        (TimedRouteCandidate candidate) -> routeMatchesPreference(candidate.route(), preference)
+                ).reversed())
+                .thenComparing(candidate -> candidate.route().scenicScore(), Comparator.reverseOrder())
+                .thenComparing(candidate -> candidate.route().waypoints().size());
+    }
+
+    private double timeFitDistance(TimedRouteCandidate candidate, double availableTimeMinutes) {
+        if (availableTimeMinutes <= 0.0) {
+            return Double.MAX_VALUE;
+        }
+
+        return Math.abs(candidate.estimatedTimeMinutes() / availableTimeMinutes - TARGET_DURATION_RATIO);
+    }
+
+    private enum DurationBand {
+        LONG(0),
+        MEDIUM(1),
+        EXTENDED(2),
+        SHORT(3),
+        TOO_SHORT(4);
+
+        private final int priority;
+
+        DurationBand(int priority) {
+            this.priority = priority;
+        }
+
+        private int priority() {
+            return priority;
+        }
+    }
+
+    private record TimedRouteCandidate(
+            FlightRoute route,
+            double estimatedTimeMinutes,
+            DurationBand band
+    ) {
     }
 
     private static final class StreamUtils {
@@ -271,9 +466,12 @@ public class RouteCandidateGenerator {
         private SetUtils() {
         }
 
-        private static List<FlightRoute> notSelected(List<FlightRoute> candidates, List<FlightRoute> selectedRoutes) {
+        private static List<TimedRouteCandidate> notSelected(
+                List<TimedRouteCandidate> candidates,
+                List<TimedRouteCandidate> selectedRoutes
+        ) {
             return candidates.stream()
-                    .filter(candidate -> selectedRoutes.stream().noneMatch(selected -> selected.id().equals(candidate.id())))
+                    .filter(candidate -> selectedRoutes.stream().noneMatch(selected -> selected.route().id().equals(candidate.route().id())))
                     .toList();
         }
     }

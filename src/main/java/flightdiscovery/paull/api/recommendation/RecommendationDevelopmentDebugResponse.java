@@ -12,6 +12,7 @@ public record RecommendationDevelopmentDebugResponse(
         int generatedCandidateRoutes,
         int discardedRoutes,
         int finalRoutes,
+        List<RecommendationCandidateDebug> candidates,
         List<RecommendationRouteDiscardDebug> discards,
         List<RecommendedRouteResponse> recommendations
 ) {

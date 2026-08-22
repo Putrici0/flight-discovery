@@ -137,7 +137,7 @@ class RecommendationControllerTest {
         String requestBody = """
                 {
                   "departureAirport": "GCLP",
-                  "availableFlightTimeMinutes": 55,
+                  "availableFlightTimeMinutes": 120,
                   "aircraftId": "cessna-172",
                   "cruiseSpeedKmh": 226,
                   "fuelBurnLitersPerHour": 34,
@@ -153,11 +153,18 @@ class RecommendationControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.request.departureAirport").value("GCLP"))
                 .andExpect(jsonPath("$.aircraft.id").value("cessna-172"))
-                .andExpect(jsonPath("$.usefulAvailableTimeMinutes").value(8.5))
+                .andExpect(jsonPath("$.usefulAvailableTimeMinutes").value(63.75))
                 .andExpect(jsonPath("$.compatibleWaypoints").isNumber())
                 .andExpect(jsonPath("$.generatedCandidateRoutes").isNumber())
                 .andExpect(jsonPath("$.discardedRoutes").isNumber())
                 .andExpect(jsonPath("$.finalRoutes").isNumber())
+                .andExpect(jsonPath("$.candidates[0].routeId").exists())
+                .andExpect(jsonPath("$.candidates[0].routeType").exists())
+                .andExpect(jsonPath("$.candidates[0].estimatedTimeMinutes").isNumber())
+                .andExpect(jsonPath("$.candidates[0].discarded").isBoolean())
+                .andExpect(jsonPath("$.candidates[0].totalScore").isNumber())
+                .andExpect(jsonPath("$.candidates[0].timeFitScore").isNumber())
+                .andExpect(jsonPath("$.candidates[0].costScore").isNumber())
                 .andExpect(jsonPath("$.discards[0].routeId").exists())
                 .andExpect(jsonPath("$.discards[0].stage").exists())
                 .andExpect(jsonPath("$.discards[0].reason").exists())
