@@ -8,7 +8,6 @@ import flightdiscovery.paull.domain.model.RouteScore;
 @Service
 public class RouteScoringService {
 
-    private static final double MOCK_WEATHER_SCORE = 80.0;
     private static final double MAX_COST_FOR_SCORE = 250.0;
 
     public RouteScore score(
@@ -16,21 +15,22 @@ public class RouteScoringService {
             double estimatedTimeMinutes,
             double availableTimeMinutes,
             double estimatedCost,
-            String preference
+            String preference,
+            double weatherScore
     ) {
-        double weatherScore = MOCK_WEATHER_SCORE;
+        double normalizedWeatherScore = clampScore(weatherScore);
         double timeFitScore = timeFitScore(estimatedTimeMinutes, availableTimeMinutes);
         double preferenceScore = preferenceScore(route, preference);
         double scenicScore = scenicScore(route);
         double costScore = costScore(estimatedCost);
-        double totalScore = clampScore(weatherScore * 0.20
+        double totalScore = clampScore(normalizedWeatherScore * 0.20
                 + timeFitScore * 0.30
                 + preferenceScore * 0.20
                 + scenicScore * 0.25
                 + costScore * 0.05);
 
         return new RouteScore(
-                round(weatherScore),
+                round(normalizedWeatherScore),
                 round(timeFitScore),
                 round(preferenceScore),
                 round(scenicScore),

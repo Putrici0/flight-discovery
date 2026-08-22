@@ -295,7 +295,8 @@ select:focus {
 }
 
 .metrics-grid,
-.score-grid {
+.score-grid,
+.weather-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
@@ -307,15 +308,28 @@ select:focus {
   margin-top: 10px;
 }
 
-.score-grid.compact {
+.weather-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.score-grid.compact,
+.weather-grid.compact {
   margin-bottom: 0;
 }
 
 .metrics-grid div,
-.score-grid div {
+.score-grid div,
+.weather-grid div {
   border-radius: 6px;
   background: #f4f7fa;
   padding: 10px;
+}
+
+.mock-note {
+  margin: 0;
+  color: #667085;
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 dt {
@@ -334,6 +348,32 @@ dd {
   margin-bottom: 0;
 }
 
+.debug-info {
+  border-top: 1px dashed #c7d1dc;
+  margin-top: 18px;
+  padding-top: 14px;
+  color: #667085;
+}
+
+.debug-info h3 {
+  margin: 0 0 10px;
+  color: #475467;
+  font-size: 0.9rem;
+}
+
+.debug-info dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.debug-info div {
+  border-radius: 6px;
+  background: #f8fafc;
+  padding: 9px;
+}
+
 @media (max-width: 840px) {
   .page {
     width: min(100% - 24px, 640px);
@@ -345,14 +385,18 @@ dd {
   }
 
   .metrics-grid,
-  .score-grid {
+  .score-grid,
+  .weather-grid,
+  .debug-info dl {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 440px) {
   .metrics-grid,
-  .score-grid {
+  .score-grid,
+  .weather-grid,
+  .debug-info dl {
     grid-template-columns: 1fr;
   }
 }

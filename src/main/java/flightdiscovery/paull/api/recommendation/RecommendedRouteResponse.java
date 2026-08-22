@@ -18,6 +18,11 @@ public record RecommendedRouteResponse(
         double estimatedFuelLiters,
         double estimatedCost,
         double totalScore,
+        double weatherScore,
+        double windKmh,
+        double cloudCoverPercent,
+        double precipitationProbability,
+        double visibilityKm,
         RouteScore scoreBreakdown,
         String explanation,
         List<String> warnings

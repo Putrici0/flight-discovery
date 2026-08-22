@@ -4,6 +4,7 @@ import java.util.List;
 
 public record RecommendationResponse(
         List<RecommendedRouteResponse> recommendations,
-        List<String> warnings
+        List<String> warnings,
+        RecommendationDebugInfo debugInfo
 ) {
 }

@@ -20,7 +20,7 @@ class RouteScoringServiceTest {
     void calculatesTotalScoreWithConfiguredWeights() {
         FlightRoute route = routeWithScenicScoreAndTags(8.0, List.of("coast"));
 
-        RouteScore score = scoringService.score(route, 90.0, 120, 100.0, "coast");
+        RouteScore score = scoringService.score(route, 90.0, 120, 100.0, "coast", 80.0);
 
         assertEquals(80.0, score.weatherScore(), 0.01);
         assertEquals(86.5, score.timeFitScore(), 0.01);
@@ -73,8 +73,8 @@ class RouteScoringServiceTest {
     void totalScoreAlwaysStaysBetweenZeroAndOneHundred() {
         FlightRoute route = routeWithScenicScoreAndTags(20.0, List.of("coast"));
 
-        RouteScore cheapRouteScore = scoringService.score(route, 72.0, 120, -10.0, "coast");
-        RouteScore expensiveRouteScore = scoringService.score(route, 250.0, 120, 1000.0, "unknown");
+        RouteScore cheapRouteScore = scoringService.score(route, 72.0, 120, -10.0, "coast", 140.0);
+        RouteScore expensiveRouteScore = scoringService.score(route, 250.0, 120, 1000.0, "unknown", -10.0);
 
         assertScoreInRange(cheapRouteScore.totalScore());
         assertScoreInRange(expensiveRouteScore.totalScore());

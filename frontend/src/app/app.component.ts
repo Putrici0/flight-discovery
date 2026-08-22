@@ -1,4 +1,4 @@
-import { AfterViewInit, Component, OnDestroy } from '@angular/core';
+import { AfterViewInit, Component, OnDestroy, isDevMode } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CurrencyPipe, DecimalPipe, NgFor, NgIf } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -6,6 +6,7 @@ import * as L from 'leaflet';
 
 import {
   RecommendationRequest,
+  RecommendationDebugInfo,
   RecommendationService,
   RecommendedRoute,
   RouteType,
@@ -101,6 +102,8 @@ export class AppComponent implements AfterViewInit, OnDestroy {
   ];
 
   protected recommendations: RecommendedRoute[] = [];
+  protected debugInfo?: RecommendationDebugInfo;
+  protected readonly showDebugInfo = isDevMode();
   protected selectedRouteIndex = 0;
   protected isLoading = false;
   protected errorMessage = '';
@@ -143,18 +146,21 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     this.isLoading = true;
     this.errorMessage = '';
     this.recommendations = [];
+    this.debugInfo = undefined;
     this.selectedRouteIndex = 0;
     this.renderMap();
 
     this.recommendationService.recommend(this.form).subscribe({
       next: (response) => {
         this.recommendations = response.recommendations;
+        this.debugInfo = response.debugInfo;
         this.selectedRouteIndex = 0;
         this.isLoading = false;
         this.renderMap();
       },
       error: (error: HttpErrorResponse) => {
         this.errorMessage = this.resolveErrorMessage(error);
+        this.debugInfo = undefined;
         this.isLoading = false;
         this.renderMap();
       }

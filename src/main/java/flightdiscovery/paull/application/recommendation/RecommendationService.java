@@ -15,16 +15,19 @@ import org.springframework.web.server.ResponseStatusException;
 
 import flightdiscovery.paull.api.recommendation.RecommendationRequest;
 import flightdiscovery.paull.api.recommendation.RecommendationResponse;
+import flightdiscovery.paull.api.recommendation.RecommendationDebugInfo;
 import flightdiscovery.paull.api.recommendation.RecommendedRouteResponse;
 import flightdiscovery.paull.domain.calculation.RouteCalculationService;
 import flightdiscovery.paull.domain.model.Aircraft;
 import flightdiscovery.paull.domain.model.Airport;
 import flightdiscovery.paull.domain.model.FlightRoute;
 import flightdiscovery.paull.domain.model.RouteScore;
+import flightdiscovery.paull.domain.model.WeatherData;
 import flightdiscovery.paull.domain.repository.MockAircraftRepository;
 import flightdiscovery.paull.domain.repository.MockAirportRepository;
 import flightdiscovery.paull.domain.repository.MockRouteRepository;
 import flightdiscovery.paull.domain.scoring.RouteScoringService;
+import flightdiscovery.paull.domain.weather.WeatherService;
 
 @Service
 public class RecommendationService {
@@ -42,6 +45,7 @@ public class RecommendationService {
     private final RouteCalculationService routeCalculationService;
     private final RouteScoringService routeScoringService;
     private final RouteCandidateGenerator routeCandidateGenerator;
+    private final WeatherService weatherService;
 
     public RecommendationService(
             MockRouteRepository routeRepository,
@@ -49,7 +53,8 @@ public class RecommendationService {
             MockAircraftRepository aircraftRepository,
             RouteCalculationService routeCalculationService,
             RouteScoringService routeScoringService,
-            RouteCandidateGenerator routeCandidateGenerator
+            RouteCandidateGenerator routeCandidateGenerator,
+            WeatherService weatherService
     ) {
         this.routeRepository = routeRepository;
         this.airportRepository = airportRepository;
@@ -57,6 +62,7 @@ public class RecommendationService {
         this.routeCalculationService = routeCalculationService;
         this.routeScoringService = routeScoringService;
         this.routeCandidateGenerator = routeCandidateGenerator;
+        this.weatherService = weatherService;
     }
 
     public RecommendationResponse recommend(RecommendationRequest request) {
@@ -75,12 +81,13 @@ public class RecommendationService {
                 request.effectiveSafetyMarginPercent(),
                 round(usefulFlightTimeMinutes));
 
-        List<FlightRoute> generatedRoutes = routeCandidateGenerator.generate(
+        RouteGenerationResult generationResult = routeCandidateGenerator.generateWithDebug(
                 departureAirport,
                 usefulFlightTimeMinutes,
                 cruiseSpeedKmh,
                 request.preference()
         );
+        List<FlightRoute> generatedRoutes = generationResult.routes();
         List<FlightRoute> routesForScoring = Stream.concat(predefinedRoutes.stream(), generatedRoutes.stream())
                 .toList();
         LOGGER.info("Recommendation diagnostics: routesReachingScoring={} predefinedReachingScoring={} generatedReachingScoring={}",
@@ -104,7 +111,14 @@ public class RecommendationService {
                 usefulTimeViableRoutes.size(),
                 viableRecommendations.size());
 
-        return new RecommendationResponse(viableRecommendations, warnings(viableRecommendations));
+        int scoredRoutesDiscardedByTime = scoredRoutes.size() - usefulTimeViableRoutes.size();
+        RecommendationDebugInfo debugInfo = new RecommendationDebugInfo(
+                generationResult.generatedCandidateRoutes(),
+                generationResult.discardedByTimeRoutes() + scoredRoutesDiscardedByTime,
+                viableRecommendations.size()
+        );
+
+        return new RecommendationResponse(viableRecommendations, warnings(viableRecommendations), debugInfo);
     }
 
     private List<ScoredRoute> diverseRecommendations(List<ScoredRoute> scoredRoutes) {
@@ -204,12 +218,14 @@ public class RecommendationService {
         double estimatedTimeMinutes = routeCalculationService.estimatedTimeMinutes(estimatedTimeHours);
         double estimatedFuelLiters = routeCalculationService.estimatedFuelLiters(estimatedTimeMinutes, fuelBurnLitersPerHour);
         double estimatedCost = routeCalculationService.estimatedCost(estimatedFuelLiters, request.fuelPricePerLiter());
+        WeatherData weatherData = weatherService.weatherFor(route);
         RouteScore score = routeScoringService.score(
                 route,
                 estimatedTimeMinutes,
                 usefulFlightTimeMinutes,
                 estimatedCost,
-                request.preference()
+                request.preference(),
+                weatherData.weatherScore()
         );
 
         return new RecommendedRouteResponse(
@@ -224,8 +240,13 @@ public class RecommendationService {
                 roundOneDecimal(estimatedFuelLiters),
                 roundTwoDecimals(estimatedCost),
                 score.totalScore(),
+                score.weatherScore(),
+                weatherData.windKmh(),
+                weatherData.cloudCoverPercent(),
+                weatherData.precipitationProbability(),
+                weatherData.visibilityKm(),
                 score,
-                explanation(route, request, usefulFlightTimeMinutes, estimatedTimeMinutes, estimatedFuelLiters, estimatedCost, score),
+                explanation(route, request, usefulFlightTimeMinutes, estimatedTimeMinutes, estimatedFuelLiters, estimatedCost, score, weatherData),
                 routeWarnings(estimatedTimeMinutes, usefulFlightTimeMinutes, estimatedCost)
         );
     }
@@ -281,7 +302,8 @@ public class RecommendationService {
             double estimatedTimeMinutes,
             double estimatedFuelLiters,
             double estimatedCost,
-            RouteScore score
+            RouteScore score,
+            WeatherData weatherData
     ) {
         String timeFit = timeFitText(estimatedTimeMinutes, usefulFlightTimeMinutes);
         String scenicFit = score.scenicScore() >= 85.0
@@ -296,8 +318,14 @@ public class RecommendationService {
                 ? "encaja con la preferencia " + request.preference()
                 : "no encaja directamente con la preferencia " + request.preference();
 
+        String weatherFit = weatherData.weatherScore() >= 75.0
+                ? "meteorologia simulada favorable"
+                : weatherData.weatherScore() >= 50.0
+                ? "meteorologia simulada aceptable"
+                : "meteorologia simulada desfavorable";
+
         return "Esta ruta " + timeFit + ", tiene " + scenicFit
-                + ", " + costFit + " y " + preferenceFit + ". Se estiman "
+                + ", " + costFit + ", " + weatherFit + " y " + preferenceFit + ". Se estiman "
                 + round(estimatedTimeMinutes) + " minutos, "
                 + roundOneDecimal(estimatedFuelLiters) + " litros y "
                 + roundTwoDecimals(estimatedCost) + " EUR.";

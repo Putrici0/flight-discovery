@@ -50,9 +50,17 @@ class RecommendationControllerTest {
                 .andExpect(jsonPath("$.recommendations[0].estimatedFuelLiters").isNumber())
                 .andExpect(jsonPath("$.recommendations[0].estimatedCost").isNumber())
                 .andExpect(jsonPath("$.recommendations[0].totalScore").isNumber())
+                .andExpect(jsonPath("$.recommendations[0].weatherScore").isNumber())
+                .andExpect(jsonPath("$.recommendations[0].windKmh").isNumber())
+                .andExpect(jsonPath("$.recommendations[0].cloudCoverPercent").isNumber())
+                .andExpect(jsonPath("$.recommendations[0].precipitationProbability").isNumber())
+                .andExpect(jsonPath("$.recommendations[0].visibilityKm").isNumber())
                 .andExpect(jsonPath("$.recommendations[0].scoreBreakdown.totalScore").isNumber())
                 .andExpect(jsonPath("$.recommendations[0].explanation").exists())
                 .andExpect(jsonPath("$.recommendations[0].warnings").isArray())
+                .andExpect(jsonPath("$.debugInfo.generatedCandidateRoutes").isNumber())
+                .andExpect(jsonPath("$.debugInfo.discardedByTimeRoutes").isNumber())
+                .andExpect(jsonPath("$.debugInfo.recommendedRoutes").isNumber())
                 .andExpect(jsonPath("$.warnings").isArray());
     }
 

@@ -180,7 +180,7 @@
             </div>
             <div>
               <dt>Preferencia</dt>
-            <dd>{{ route.scoreBreakdown.preferenceScore ?? 0 | number:'1.0-0' }}</dd>
+              <dd>{{ (route.scoreBreakdown.preferenceScore ?? 0) | number:'1.0-0' }}</dd>
             </div>
             <div>
               <dt>Visual</dt>
@@ -189,6 +189,31 @@
             <div>
               <dt>Coste</dt>
               <dd>{{ route.scoreBreakdown.costScore | number:'1.0-0' }}</dd>
+            </div>
+          </dl>
+
+          <h4>Meteorologia mock</h4>
+          <p class="mock-note">Datos simulados para desarrollo.</p>
+          <dl class="weather-grid">
+            <div>
+              <dt>Weather score</dt>
+              <dd>{{ (route.weatherScore ?? route.scoreBreakdown.weatherScore) | number:'1.0-0' }}</dd>
+            </div>
+            <div>
+              <dt>Viento estimado</dt>
+              <dd>{{ (route.windKmh ?? 0) | number:'1.0-0' }} km/h</dd>
+            </div>
+            <div>
+              <dt>Nubosidad estimada</dt>
+              <dd>{{ (route.cloudCoverPercent ?? 0) | number:'1.0-0' }}%</dd>
+            </div>
+            <div>
+              <dt>Precipitacion</dt>
+              <dd>{{ (route.precipitationProbability ?? 0) | number:'1.0-0' }}%</dd>
+            </div>
+            <div>
+              <dt>Visibilidad estimada</dt>
+              <dd>{{ (route.visibilityKm ?? 0) | number:'1.0-0' }} km</dd>
             </div>
           </dl>
 
@@ -259,7 +284,7 @@
             </div>
             <div>
               <dt>Preferencia</dt>
-            <dd>{{ route.scoreBreakdown.preferenceScore ?? 0 | number:'1.0-0' }}</dd>
+              <dd>{{ (route.scoreBreakdown.preferenceScore ?? 0) | number:'1.0-0' }}</dd>
             </div>
             <div>
               <dt>Visual</dt>
@@ -270,11 +295,52 @@
               <dd>{{ route.scoreBreakdown.costScore | number:'1.0-0' }}</dd>
             </div>
           </dl>
+          <p class="mock-note">Meteorologia simulada/mock</p>
+          <dl class="weather-grid compact">
+            <div>
+              <dt>Weather</dt>
+              <dd>{{ (route.weatherScore ?? route.scoreBreakdown.weatherScore) | number:'1.0-0' }}</dd>
+            </div>
+            <div>
+              <dt>Viento</dt>
+              <dd>{{ (route.windKmh ?? 0) | number:'1.0-0' }} km/h</dd>
+            </div>
+            <div>
+              <dt>Nubosidad</dt>
+              <dd>{{ (route.cloudCoverPercent ?? 0) | number:'1.0-0' }}%</dd>
+            </div>
+            <div>
+              <dt>Precipitacion</dt>
+              <dd>{{ (route.precipitationProbability ?? 0) | number:'1.0-0' }}%</dd>
+            </div>
+            <div>
+              <dt>Visibilidad</dt>
+              <dd>{{ (route.visibilityKm ?? 0) | number:'1.0-0' }} km</dd>
+            </div>
+          </dl>
           <ul class="route-warnings" *ngIf="route.warnings?.length">
             <li *ngFor="let warning of route.warnings ?? []">{{ warning }}</li>
           </ul>
           <p class="explanation">{{ route.explanation }}</p>
         </article>
+
+        <aside class="debug-info" *ngIf="showDebugInfo && debugInfo">
+          <h3>Debug</h3>
+          <dl>
+            <div>
+              <dt>Rutas candidatas generadas</dt>
+              <dd>{{ debugInfo.generatedCandidateRoutes }}</dd>
+            </div>
+            <div>
+              <dt>Rutas descartadas por tiempo</dt>
+              <dd>{{ debugInfo.discardedByTimeRoutes }}</dd>
+            </div>
+            <div>
+              <dt>Rutas finalmente recomendadas</dt>
+              <dd>{{ debugInfo.recommendedRoutes }}</dd>
+            </div>
+          </dl>
+        </aside>
       </section>
     </section>
   </section>

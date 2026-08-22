@@ -18,6 +18,7 @@ import flightdiscovery.paull.domain.repository.MockAirportRepository;
 import flightdiscovery.paull.domain.repository.MockRouteRepository;
 import flightdiscovery.paull.domain.repository.MockWaypointRepository;
 import flightdiscovery.paull.domain.scoring.RouteScoringService;
+import flightdiscovery.paull.domain.weather.MockWeatherService;
 
 class RecommendationServiceTest {
 
@@ -27,16 +28,21 @@ class RecommendationServiceTest {
             new MockAircraftRepository(),
             new RouteCalculationService(),
             new RouteScoringService(),
-            new RouteCandidateGenerator(new MockWaypointRepository(), new RouteCalculationService())
+            new RouteCandidateGenerator(new MockWaypointRepository(), new RouteCalculationService()),
+            new MockWeatherService()
     );
 
     @Test
     void recommendsShorterRoutesWhenAvailableTimeIsShorter() {
-        var shortTimeRecommendations = recommendationService.recommend(requestWithAvailableTime(60)).recommendations();
+        var shortTimeRecommendations = recommendationService.recommend(requestWithAvailableTime(20)).recommendations();
         var longTimeRecommendations = recommendationService.recommend(requestWithAvailableTime(180)).recommendations();
+        double longestShortRecommendation = shortTimeRecommendations.stream()
+                .mapToDouble(RecommendedRouteResponse::estimatedTimeMinutes)
+                .max()
+                .orElseThrow();
 
-        assertTrue(shortTimeRecommendations.getFirst().estimatedTimeMinutes()
-                < longTimeRecommendations.getFirst().estimatedTimeMinutes());
+        assertTrue(longTimeRecommendations.stream()
+                .anyMatch(recommendation -> recommendation.estimatedTimeMinutes() > longestShortRecommendation));
     }
 
     @Test
@@ -149,6 +155,32 @@ class RecommendationServiceTest {
                 .getFirst();
 
         assertTrue(recommendation.warnings().contains("La meteorologia todavia es simulada"));
+    }
+
+    @Test
+    void recommendationsIncludeMockWeatherData() {
+        var recommendation = recommendationService.recommend(requestWithAvailableTime(120))
+                .recommendations()
+                .getFirst();
+
+        assertScoreInRange(recommendation.weatherScore());
+        assertEquals(recommendation.scoreBreakdown().weatherScore(), recommendation.weatherScore(), 0.01);
+        assertTrue(recommendation.windKmh() >= 0.0);
+        assertTrue(recommendation.cloudCoverPercent() >= 0.0);
+        assertTrue(recommendation.cloudCoverPercent() <= 100.0);
+        assertTrue(recommendation.precipitationProbability() >= 0.0);
+        assertTrue(recommendation.precipitationProbability() <= 100.0);
+        assertTrue(recommendation.visibilityKm() >= 0.0);
+        assertTrue(recommendation.explanation().contains("meteorologia simulada"));
+    }
+
+    @Test
+    void responseIncludesRecommendationDebugInfo() {
+        var response = recommendationService.recommend(requestWithAvailableTime(120));
+
+        assertTrue(response.debugInfo().generatedCandidateRoutes() > 0);
+        assertTrue(response.debugInfo().discardedByTimeRoutes() >= 0);
+        assertEquals(response.recommendations().size(), response.debugInfo().recommendedRoutes());
     }
 
     @Test
@@ -341,5 +373,10 @@ class RecommendationServiceTest {
             RecommendedRouteResponse first,
             RecommendedRouteResponse second
     ) {
+    }
+
+    private void assertScoreInRange(double score) {
+        assertTrue(score >= 0.0);
+        assertTrue(score <= 100.0);
     }
 }

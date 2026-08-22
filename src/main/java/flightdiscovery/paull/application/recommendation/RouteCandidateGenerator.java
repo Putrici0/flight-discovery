@@ -40,6 +40,15 @@ public class RouteCandidateGenerator {
             double cruiseSpeedKmh,
             String preference
     ) {
+        return generateWithDebug(departureAirport, availableTimeMinutes, cruiseSpeedKmh, preference).routes();
+    }
+
+    public RouteGenerationResult generateWithDebug(
+            Airport departureAirport,
+            double availableTimeMinutes,
+            double cruiseSpeedKmh,
+            String preference
+    ) {
         List<VisualWaypoint> prioritizedWaypoints = waypointRepository.findAll().stream()
                 .filter(waypoint -> isCompatibleWithDepartureAirport(waypoint, departureAirport))
                 .sorted(waypointComparator(preference))
@@ -63,7 +72,11 @@ public class RouteCandidateGenerator {
                 .toList();
         LOGGER.info("Recommendation diagnostics: returnedGeneratedCandidatesAfterLimit={}", limitedCandidates.size());
 
-        return limitedCandidates;
+        return new RouteGenerationResult(
+                limitedCandidates,
+                candidates.size(),
+                candidates.size() - timeViableCandidates.size()
+        );
     }
 
     private List<FlightRoute> singleWaypointRoutes(Airport departureAirport, List<VisualWaypoint> waypoints) {

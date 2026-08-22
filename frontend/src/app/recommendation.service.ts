@@ -33,6 +33,11 @@ export interface RecommendedRoute {
   estimatedFuelLiters: number;
   estimatedCost: number;
   totalScore: number;
+  weatherScore?: number;
+  windKmh?: number;
+  cloudCoverPercent?: number;
+  precipitationProbability?: number;
+  visibilityKm?: number;
   scoreBreakdown: {
     weatherScore: number;
     timeFitScore: number;
@@ -48,6 +53,13 @@ export interface RecommendedRoute {
 export interface RecommendationResponse {
   recommendations: RecommendedRoute[];
   warnings: string[];
+  debugInfo?: RecommendationDebugInfo;
+}
+
+export interface RecommendationDebugInfo {
+  generatedCandidateRoutes: number;
+  discardedByTimeRoutes: number;
+  recommendedRoutes: number;
 }
 
 @Injectable({ providedIn: 'root' })
