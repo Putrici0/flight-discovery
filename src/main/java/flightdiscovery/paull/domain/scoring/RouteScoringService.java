@@ -14,7 +14,7 @@ public class RouteScoringService {
     public RouteScore score(
             FlightRoute route,
             double estimatedTimeMinutes,
-            int availableTimeMinutes,
+            double availableTimeMinutes,
             double estimatedCost,
             String preference
     ) {
@@ -39,7 +39,7 @@ public class RouteScoringService {
         );
     }
 
-    public double timeFitScore(double estimatedTimeMinutes, int availableTimeMinutes) {
+    public double timeFitScore(double estimatedTimeMinutes, double availableTimeMinutes) {
         if (availableTimeMinutes <= 0) {
             return 0.0;
         }

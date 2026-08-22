@@ -10,6 +10,7 @@ export interface RecommendationRequest {
   fuelBurnLitersPerHour: number;
   fuelPricePerLiter: number;
   preference: string;
+  safetyMarginPercent: number;
 }
 
 export interface Waypoint {

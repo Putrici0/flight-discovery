@@ -57,6 +57,28 @@ class RecommendationServiceTest {
     }
 
     @Test
+    void usesSafetyMarginToReduceUsefulFlightTimeForFiltering() {
+        int availableTimeMinutes = 120;
+        int safetyMarginPercent = 15;
+        double usefulFlightTimeMinutes = 102.0;
+        var response = recommendationService.recommend(requestWithSafetyMargin(availableTimeMinutes, safetyMarginPercent));
+
+        assertTrue(response.recommendations().stream()
+                .allMatch(recommendation -> recommendation.estimatedTimeMinutes() <= usefulFlightTimeMinutes * 1.25));
+    }
+
+    @Test
+    void defaultsSafetyMarginToFifteenPercentWhenOmitted() {
+        var defaultMarginRecommendations = recommendationService.recommend(requestWithSafetyMargin(120, null)).recommendations();
+        var explicitMarginRecommendations = recommendationService.recommend(requestWithSafetyMargin(120, 15)).recommendations();
+
+        assertEquals(
+                explicitMarginRecommendations.stream().map(RecommendedRouteResponse::id).toList(),
+                defaultMarginRecommendations.stream().map(RecommendedRouteResponse::id).toList()
+        );
+    }
+
+    @Test
     void returnsWarningWhenFewerThanThreeRoutesAreAvailableAfterFiltering() {
         var response = recommendationService.recommend(requestWithAvailableTime(5));
 
@@ -181,7 +203,21 @@ class RecommendationServiceTest {
                 226.0,
                 34.0,
                 2.3,
-                "coast"
+                "coast",
+                0
+        );
+    }
+
+    private RecommendationRequest requestWithSafetyMargin(int availableTimeMinutes, Integer safetyMarginPercent) {
+        return new RecommendationRequest(
+                "GCLP",
+                availableTimeMinutes,
+                "cessna-172",
+                226.0,
+                34.0,
+                2.3,
+                "coast",
+                safetyMarginPercent
         );
     }
 
@@ -193,7 +229,8 @@ class RecommendationServiceTest {
                 226.0,
                 34.0,
                 2.3,
-                preference
+                preference,
+                0
         );
     }
 
@@ -205,7 +242,8 @@ class RecommendationServiceTest {
                 null,
                 null,
                 2.3,
-                "coast"
+                "coast",
+                0
         );
     }
 
@@ -217,7 +255,8 @@ class RecommendationServiceTest {
                 226.0,
                 34.0,
                 fuelPricePerLiter,
-                "coast"
+                "coast",
+                0
         );
     }
 
@@ -229,7 +268,8 @@ class RecommendationServiceTest {
                 226.0,
                 40.0,
                 2.3,
-                "coast"
+                "coast",
+                0
         );
     }
 

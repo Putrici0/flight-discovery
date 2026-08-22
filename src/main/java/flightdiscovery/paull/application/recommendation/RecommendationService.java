@@ -55,19 +55,20 @@ public class RecommendationService {
     public RecommendationResponse recommend(RecommendationRequest request) {
         double cruiseSpeedKmh = resolveCruiseSpeed(request);
         double fuelBurnLitersPerHour = resolveFuelBurn(request);
+        double usefulFlightTimeMinutes = usefulFlightTimeMinutes(request);
 
         Airport departureAirport = resolveDepartureAirport(request.departureAirport());
         var predefinedRoutes = routeRepository.findByDepartureAirportCode(departureAirport.code()).stream();
         var generatedRoutes = routeCandidateGenerator.generate(
                 departureAirport,
-                request.availableFlightTimeMinutes(),
+                usefulFlightTimeMinutes,
                 cruiseSpeedKmh,
                 request.preference()
         ).stream();
 
         var viableRecommendations = Stream.concat(predefinedRoutes, generatedRoutes)
-                .map(route -> toRecommendation(route, request, cruiseSpeedKmh, fuelBurnLitersPerHour))
-                .filter(recommendation -> isWithinAllowedTime(recommendation, request.availableFlightTimeMinutes()))
+                .map(route -> toRecommendation(route, request, usefulFlightTimeMinutes, cruiseSpeedKmh, fuelBurnLitersPerHour))
+                .filter(recommendation -> isWithinAllowedTime(recommendation, usefulFlightTimeMinutes))
                 .sorted(Comparator.comparingDouble(RecommendedRouteResponse::totalScore).reversed())
                 .limit(MAX_RECOMMENDATIONS)
                 .toList();
@@ -83,7 +84,11 @@ public class RecommendationService {
                 ));
     }
 
-    private boolean isWithinAllowedTime(RecommendedRouteResponse recommendation, int availableTimeMinutes) {
+    private double usefulFlightTimeMinutes(RecommendationRequest request) {
+        return request.availableFlightTimeMinutes() * (100.0 - request.effectiveSafetyMarginPercent()) / 100.0;
+    }
+
+    private boolean isWithinAllowedTime(RecommendedRouteResponse recommendation, double availableTimeMinutes) {
         return recommendation.estimatedTimeMinutes() <= availableTimeMinutes * MAX_ALLOWED_TIME_OVERRUN_RATIO;
     }
 
@@ -98,6 +103,7 @@ public class RecommendationService {
     private RecommendedRouteResponse toRecommendation(
             FlightRoute route,
             RecommendationRequest request,
+            double usefulFlightTimeMinutes,
             double cruiseSpeedKmh,
             double fuelBurnLitersPerHour
     ) {
@@ -109,7 +115,7 @@ public class RecommendationService {
         RouteScore score = routeScoringService.score(
                 route,
                 estimatedTimeMinutes,
-                request.availableFlightTimeMinutes(),
+                usefulFlightTimeMinutes,
                 estimatedCost,
                 request.preference()
         );
@@ -127,12 +133,12 @@ public class RecommendationService {
                 roundTwoDecimals(estimatedCost),
                 score.totalScore(),
                 score,
-                explanation(route, request, estimatedTimeMinutes, estimatedFuelLiters, estimatedCost, score),
-                routeWarnings(estimatedTimeMinutes, request.availableFlightTimeMinutes(), estimatedCost)
+                explanation(route, request, usefulFlightTimeMinutes, estimatedTimeMinutes, estimatedFuelLiters, estimatedCost, score),
+                routeWarnings(estimatedTimeMinutes, usefulFlightTimeMinutes, estimatedCost)
         );
     }
 
-    private List<String> routeWarnings(double estimatedTimeMinutes, int availableTimeMinutes, double estimatedCost) {
+    private List<String> routeWarnings(double estimatedTimeMinutes, double availableTimeMinutes, double estimatedCost) {
         List<String> warnings = new java.util.ArrayList<>();
 
         if (estimatedTimeMinutes > availableTimeMinutes) {
@@ -179,12 +185,13 @@ public class RecommendationService {
     private String explanation(
             FlightRoute route,
             RecommendationRequest request,
+            double usefulFlightTimeMinutes,
             double estimatedTimeMinutes,
             double estimatedFuelLiters,
             double estimatedCost,
             RouteScore score
     ) {
-        String timeFit = timeFitText(estimatedTimeMinutes, request.availableFlightTimeMinutes());
+        String timeFit = timeFitText(estimatedTimeMinutes, usefulFlightTimeMinutes);
         String scenicFit = score.scenicScore() >= 85.0
                 ? "un alto interes visual"
                 : "un interes visual correcto";
@@ -213,7 +220,7 @@ public class RecommendationService {
                 .anyMatch(tag -> tag.equalsIgnoreCase(preference.trim()));
     }
 
-    private String timeFitText(double estimatedTimeMinutes, int availableTimeMinutes) {
+    private String timeFitText(double estimatedTimeMinutes, double availableTimeMinutes) {
         if (estimatedTimeMinutes <= availableTimeMinutes * 0.65) {
             return "deja bastante margen respecto al tiempo disponible";
         }

@@ -87,7 +87,8 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     cruiseSpeedKmh: 226,
     fuelBurnLitersPerHour: 34,
     fuelPricePerLiter: 2.3,
-    preference: 'coast'
+    preference: 'coast',
+    safetyMarginPercent: 15
   };
 
   protected readonly airports = AIRPORT_OPTIONS;
@@ -180,6 +181,10 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     }
   }
 
+  protected usefulFlightTimeMinutes(): number {
+    return this.form.availableFlightTimeMinutes * (100 - this.form.safetyMarginPercent) / 100;
+  }
+
   protected applyAircraftDefaults(): void {
     const aircraft = this.aircraftOptions.find((option) => option.id === this.form.aircraftId);
 
@@ -198,49 +203,33 @@ export class AppComponent implements AfterViewInit, OnDestroy {
 
     this.routesLayer.clearLayers();
 
-    const bounds = L.latLngBounds([]);
     const departureAirport = this.departureAirport();
 
-    if (departureAirport) {
-      this.addAirportMarker(departureAirport, bounds);
+    if (!departureAirport) {
+      setTimeout(() => this.map?.invalidateSize(), 0);
+      return;
     }
 
-    const selectedBounds = L.latLngBounds([]);
+    this.addAirportMarker(departureAirport);
 
     this.recommendations.forEach((route, index) => {
-      const points = this.routePoints(route, departureAirport);
       const isSelected = index === this.selectedRouteIndex;
+      const points = this.routePoints(route, departureAirport);
 
-      if (points.length > 1) {
-        L.polyline(points, {
-          color: isSelected ? '#d9480f' : '#2f80ed',
-          weight: isSelected ? 5 : 3,
-          opacity: isSelected ? 0.95 : 0.42
-        })
-          .bindPopup(route.name)
-          .addTo(this.routesLayer);
+      this.addRoutePolyline(route, points, isSelected);
+
+      if (isSelected) {
+        this.addWaypointMarkers(route);
       }
-
-      points.forEach((point) => {
-        bounds.extend(point);
-        if (isSelected) {
-          selectedBounds.extend(point);
-        }
-      });
-
-      route.waypoints.forEach((waypoint) => {
-        L.marker([waypoint.latitude, waypoint.longitude], {
-          icon: this.waypointIcon
-        })
-          .bindPopup(`${waypoint.name}<br>${route.name}`)
-          .addTo(this.routesLayer);
-      });
     });
 
-    const visibleBounds = selectedBounds.isValid() ? selectedBounds : bounds;
+    const selectedRoute = this.selectedRoute();
+    const selectedBounds = selectedRoute
+      ? this.routeBounds(this.routePoints(selectedRoute, departureAirport))
+      : L.latLngBounds([[departureAirport.latitude, departureAirport.longitude]]);
 
-    if (visibleBounds.isValid()) {
-      this.map.fitBounds(visibleBounds, {
+    if (selectedBounds.isValid()) {
+      this.map.fitBounds(selectedBounds, {
         padding: [28, 28],
         maxZoom: 10
       });
@@ -253,24 +242,54 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     return AIRPORTS[this.form.departureAirport.trim().toUpperCase()];
   }
 
-  private routePoints(route: RecommendedRoute, departureAirport?: AirportLocation): L.LatLngExpression[] {
-    const points: L.LatLngExpression[] = [];
+  private routePoints(route: RecommendedRoute, departureAirport: AirportLocation): L.LatLngExpression[] {
+    const departurePoint: L.LatLngExpression = [departureAirport.latitude, departureAirport.longitude];
+    const points: L.LatLngExpression[] = [
+      departurePoint,
+      ...route.waypoints.map((waypoint: Waypoint) => [waypoint.latitude, waypoint.longitude] as L.LatLngExpression)
+    ];
 
-    if (departureAirport) {
-      points.push([departureAirport.latitude, departureAirport.longitude]);
-    }
-
-    points.push(...route.waypoints.map((waypoint: Waypoint) => [waypoint.latitude, waypoint.longitude] as L.LatLngExpression));
-
-    if (departureAirport && route.waypoints.length > 0) {
-      points.push([departureAirport.latitude, departureAirport.longitude]);
+    if (route.waypoints.length > 0) {
+      points.push(departurePoint);
     }
 
     return points;
   }
 
-  private addAirportMarker(airport: AirportLocation, bounds: L.LatLngBounds): void {
-    bounds.extend([airport.latitude, airport.longitude]);
+  private routeBounds(points: L.LatLngExpression[]): L.LatLngBounds {
+    const bounds = L.latLngBounds([]);
+    points.forEach((point) => bounds.extend(point));
+
+    return bounds;
+  }
+
+  private addRoutePolyline(route: RecommendedRoute, points: L.LatLngExpression[], isSelected: boolean): void {
+    if (points.length <= 1) {
+      return;
+    }
+
+    L.polyline(points, {
+      color: isSelected ? '#d9480f' : '#2f80ed',
+      weight: isSelected ? 5 : 3,
+      opacity: isSelected ? 0.95 : 0.42,
+      lineCap: 'round',
+      lineJoin: 'round'
+    })
+      .bindPopup(route.name)
+      .addTo(this.routesLayer);
+  }
+
+  private addWaypointMarkers(route: RecommendedRoute): void {
+    route.waypoints.forEach((waypoint) => {
+      L.marker([waypoint.latitude, waypoint.longitude], {
+        icon: this.waypointIcon
+      })
+        .bindPopup(`${waypoint.name}<br>${route.name}`)
+        .addTo(this.routesLayer);
+    });
+  }
+
+  private addAirportMarker(airport: AirportLocation): void {
     L.marker([airport.latitude, airport.longitude], {
       icon: this.airportIcon
     })

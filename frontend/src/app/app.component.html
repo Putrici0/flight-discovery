@@ -32,6 +32,19 @@
       </label>
 
       <label>
+        Margen seguridad (%)
+        <input
+          name="safetyMarginPercent"
+          type="number"
+          min="0"
+          max="100"
+          step="1"
+          [(ngModel)]="form.safetyMarginPercent"
+          required
+        >
+      </label>
+
+      <label>
         Avion
         <select
           name="aircraftId"
@@ -134,6 +147,10 @@
               <dd>{{ form.availableFlightTimeMinutes }} min</dd>
             </div>
             <div>
+              <dt>Tiempo util</dt>
+              <dd>{{ usefulFlightTimeMinutes() | number:'1.0-0' }} min</dd>
+            </div>
+            <div>
               <dt>Distancia</dt>
               <dd>{{ route.approximateDistanceKm | number:'1.0-0' }} km</dd>
             </div>
@@ -205,6 +222,10 @@
               <div>
                 <dt>Tiempo disponible</dt>
                 <dd>{{ form.availableFlightTimeMinutes }} min</dd>
+              </div>
+              <div>
+                <dt>Tiempo util</dt>
+                <dd>{{ usefulFlightTimeMinutes() | number:'1.0-0' }} min</dd>
               </div>
               <div>
                 <dt>Distancia</dt>

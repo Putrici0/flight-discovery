@@ -33,7 +33,7 @@ public class RouteCandidateGenerator {
 
     public List<FlightRoute> generate(
             Airport departureAirport,
-            int availableTimeMinutes,
+            double availableTimeMinutes,
             double cruiseSpeedKmh,
             String preference
     ) {
@@ -99,7 +99,7 @@ public class RouteCandidateGenerator {
         );
     }
 
-    private boolean fitsAvailableTime(FlightRoute route, int availableTimeMinutes, double cruiseSpeedKmh) {
+    private boolean fitsAvailableTime(FlightRoute route, double availableTimeMinutes, double cruiseSpeedKmh) {
         double distanceKm = routeCalculationService.totalDistanceKm(route);
         double estimatedTimeHours = routeCalculationService.estimatedTimeHours(distanceKm, cruiseSpeedKmh);
         double estimatedTimeMinutes = routeCalculationService.estimatedTimeMinutes(estimatedTimeHours);
