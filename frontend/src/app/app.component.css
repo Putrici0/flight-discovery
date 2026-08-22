@@ -242,7 +242,10 @@ select:focus {
 
 .route {
   border-top: 1px solid #e4e9ef;
-  padding: 0;
+  border-radius: 6px;
+  margin: 0 -12px;
+  padding: 18px 12px;
+  cursor: pointer;
 }
 
 .route:first-of-type {
@@ -253,29 +256,16 @@ select:focus {
   padding-bottom: 0;
 }
 
-.route-button {
-  display: block;
-  width: calc(100% + 24px);
-  margin: 0 -12px;
-  border: 0;
-  border-radius: 6px;
-  padding: 18px 12px;
-  color: inherit;
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-}
-
-.route-button:focus {
+.route:focus {
   outline: 3px solid rgba(36, 122, 120, 0.16);
 }
 
-.route-button:hover,
-.route.selected .route-button {
+.route:hover,
+.route.selected {
   background: #f4f7fa;
 }
 
-.route.selected .route-button {
+.route.selected {
   box-shadow: inset 4px 0 0 #d9480f;
 }
 

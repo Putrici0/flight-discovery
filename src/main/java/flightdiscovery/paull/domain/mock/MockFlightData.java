@@ -41,96 +41,44 @@ public final class MockFlightData {
     );
 
     private static final List<VisualWaypoint> VISUAL_WAYPOINTS = List.of(
-            new VisualWaypoint(
-                    "gc-maspalomas-dunes",
-                    "Dunas de Maspalomas",
-                    27.7406,
-                    -15.5846,
-                    List.of("GCLP"),
-                    List.of("coast", "island", "panoramic", "short"),
-                    9.0
-            ),
-            new VisualWaypoint(
-                    "gc-roque-nublo",
-                    "Roque Nublo",
-                    27.9676,
-                    -15.6007,
-                    List.of("GCLP"),
-                    List.of("mountain", "island", "panoramic"),
-                    9.4
-            ),
-            new VisualWaypoint(
-                    "gc-pico-de-las-nieves",
-                    "Pico de las Nieves",
-                    27.9621,
-                    -15.5715,
-                    List.of("GCLP"),
-                    List.of("mountain", "panoramic", "island"),
-                    9.1
-            ),
-            new VisualWaypoint(
-                    "gc-puerto-de-mogan",
-                    "Puerto de Mogan",
-                    27.8170,
-                    -15.7650,
-                    List.of("GCLP"),
-                    List.of("coast", "island", "short"),
-                    8.3
-            ),
-            new VisualWaypoint(
-                    "gc-agaete-cliffs",
-                    "Acantilados de Agaete",
-                    28.1005,
-                    -15.7104,
-                    List.of("GCLP"),
-                    List.of("coast", "panoramic", "island"),
-                    8.7
-            ),
-            new VisualWaypoint(
-                    "tf-teide",
-                    "Teide",
-                    28.2724,
-                    -16.6425,
-                    List.of("GCTS", "GCXO"),
-                    List.of("volcano", "mountain", "panoramic", "island"),
-                    9.8
-            ),
-            new VisualWaypoint(
-                    "tf-anaga",
-                    "Macizo de Anaga",
-                    28.5447,
-                    -16.2009,
-                    List.of("GCTS", "GCXO"),
-                    List.of("mountain", "coast", "panoramic", "island"),
-                    9.2
-            ),
-            new VisualWaypoint(
-                    "tf-los-gigantes",
-                    "Acantilados de Los Gigantes",
-                    28.2437,
-                    -16.8392,
-                    List.of("GCTS", "GCXO"),
-                    List.of("coast", "panoramic", "island"),
-                    9.0
-            ),
-            new VisualWaypoint(
-                    "tf-costa-adeje",
-                    "Costa Adeje",
-                    28.0866,
-                    -16.7350,
-                    List.of("GCTS", "GCXO"),
-                    List.of("coast", "short", "island"),
-                    8.0
-            ),
-            new VisualWaypoint(
-                    "tf-la-orotava",
-                    "Valle de La Orotava",
-                    28.3892,
-                    -16.5239,
-                    List.of("GCTS", "GCXO"),
-                    List.of("mountain", "panoramic", "island"),
-                    8.6
-            )
+            new VisualWaypoint("gc-maspalomas-dunes", "Dunas de Maspalomas", 27.7406, -15.5846, List.of("GCLP"), List.of("coast", "island", "panoramic", "short"), 92.0),
+            new VisualWaypoint("gc-puerto-de-mogan", "Puerto de Mogan", 27.8170, -15.7650, List.of("GCLP"), List.of("coast", "village", "island", "short"), 86.0),
+            new VisualWaypoint("gc-agaete", "Agaete", 28.1005, -15.7004, List.of("GCLP"), List.of("coast", "village", "panoramic", "island"), 88.0),
+            new VisualWaypoint("gc-roque-nublo", "Roque Nublo", 27.9676, -15.6007, List.of("GCLP"), List.of("mountain", "volcanic", "island", "panoramic"), 96.0),
+            new VisualWaypoint("gc-tejeda", "Tejeda", 27.9956, -15.6156, List.of("GCLP"), List.of("mountain", "village", "panoramic", "island"), 91.0),
+            new VisualWaypoint("gc-las-canteras", "Las Canteras", 28.1404, -15.4366, List.of("GCLP"), List.of("coast", "beach", "urban", "island"), 84.0),
+            new VisualWaypoint("gc-arucas", "Arucas", 28.1194, -15.5239, List.of("GCLP"), List.of("historic", "village", "urban", "island"), 78.0),
+            new VisualWaypoint("gc-guayadeque", "Barranco de Guayadeque", 27.9170, -15.4760, List.of("GCLP"), List.of("ravine", "mountain", "panoramic", "short"), 87.0),
+            new VisualWaypoint("gc-pico-de-las-nieves", "Pico de las Nieves", 27.9621, -15.5715, List.of("GCLP"), List.of("mountain", "panoramic", "island"), 94.0),
+            new VisualWaypoint("gc-roque-bentayga", "Roque Bentayga", 27.9888, -15.6401, List.of("GCLP"), List.of("mountain", "volcanic", "historic", "panoramic"), 90.0),
+            new VisualWaypoint("gc-teror", "Teror", 28.0609, -15.5474, List.of("GCLP"), List.of("historic", "village", "island"), 80.0),
+            new VisualWaypoint("gc-vegueta", "Vegueta", 28.1008, -15.4150, List.of("GCLP"), List.of("historic", "urban", "short"), 76.0),
+            new VisualWaypoint("gc-risco-caido", "Risco Caido", 28.0500, -15.6850, List.of("GCLP"), List.of("historic", "mountain", "panoramic", "island"), 89.0),
+            new VisualWaypoint("gc-fataga", "Fataga", 27.8890, -15.5630, List.of("GCLP"), List.of("mountain", "village", "panoramic", "short"), 82.0),
+            new VisualWaypoint("gc-aguimes", "Aguimes", 27.9054, -15.4461, List.of("GCLP"), List.of("historic", "village", "short"), 77.0),
+            new VisualWaypoint("gc-galdar-cueva-pintada", "Galdar y Cueva Pintada", 28.1470, -15.6540, List.of("GCLP"), List.of("historic", "urban", "island"), 79.0),
+            new VisualWaypoint("gc-firgas", "Firgas", 28.1075, -15.5628, List.of("GCLP"), List.of("village", "mountain", "panoramic"), 75.0),
+            new VisualWaypoint("gc-tamadaba", "Pinar de Tamadaba", 28.0610, -15.6950, List.of("GCLP"), List.of("forest", "mountain", "panoramic", "island"), 90.0),
+            new VisualWaypoint("gc-sardina-del-norte", "Sardina del Norte", 28.1635, -15.7040, List.of("GCLP"), List.of("coast", "village", "panoramic"), 81.0),
+            new VisualWaypoint("gc-playa-de-amadores", "Playa de Amadores", 27.7919, -15.7240, List.of("GCLP"), List.of("coast", "beach", "short"), 82.0),
+            new VisualWaypoint("tf-teide", "Teide", 28.2724, -16.6425, List.of("GCTS", "GCXO"), List.of("volcano", "mountain", "panoramic", "island"), 99.0),
+            new VisualWaypoint("tf-los-gigantes", "Acantilados de Los Gigantes", 28.2437, -16.8392, List.of("GCTS", "GCXO"), List.of("coast", "cliffs", "panoramic", "island"), 93.0),
+            new VisualWaypoint("tf-anaga", "Macizo de Anaga", 28.5447, -16.2009, List.of("GCTS", "GCXO"), List.of("mountain", "forest", "coast", "panoramic", "island"), 94.0),
+            new VisualWaypoint("tf-la-orotava", "La Orotava", 28.3892, -16.5239, List.of("GCTS", "GCXO"), List.of("historic", "mountain", "panoramic", "island"), 86.0),
+            new VisualWaypoint("tf-garachico", "Garachico", 28.3737, -16.7637, List.of("GCTS", "GCXO"), List.of("coast", "historic", "village", "island"), 85.0),
+            new VisualWaypoint("tf-costa-adeje", "Costa Adeje", 28.0866, -16.7350, List.of("GCTS", "GCXO"), List.of("coast", "beach", "short", "island"), 82.0),
+            new VisualWaypoint("tf-la-laguna", "La Laguna", 28.4874, -16.3159, List.of("GCTS", "GCXO"), List.of("historic", "urban", "island"), 83.0),
+            new VisualWaypoint("tf-punta-de-teno", "Punta de Teno", 28.3424, -16.9227, List.of("GCTS", "GCXO"), List.of("coast", "cliffs", "panoramic", "island"), 91.0),
+            new VisualWaypoint("tf-corona-forestal", "Corona Forestal", 28.3000, -16.5200, List.of("GCTS", "GCXO"), List.of("forest", "mountain", "volcano", "panoramic"), 90.0),
+            new VisualWaypoint("tf-masca", "Masca", 28.3042, -16.8405, List.of("GCTS", "GCXO"), List.of("mountain", "village", "ravine", "panoramic"), 92.0),
+            new VisualWaypoint("tf-icod-drago", "Icod de los Vinos y Drago Milenario", 28.3667, -16.7227, List.of("GCTS", "GCXO"), List.of("historic", "village", "island"), 80.0),
+            new VisualWaypoint("tf-puerto-de-la-cruz", "Puerto de la Cruz", 28.4133, -16.5482, List.of("GCTS", "GCXO"), List.of("coast", "urban", "historic", "island"), 81.0),
+            new VisualWaypoint("tf-playa-de-las-teresitas", "Playa de Las Teresitas", 28.5085, -16.1853, List.of("GCTS", "GCXO"), List.of("coast", "beach", "panoramic"), 84.0),
+            new VisualWaypoint("tf-candelaria", "Candelaria", 28.3548, -16.3727, List.of("GCTS", "GCXO"), List.of("coast", "historic", "urban"), 77.0),
+            new VisualWaypoint("tf-barranco-del-infierno", "Barranco del Infierno", 28.1228, -16.7247, List.of("GCTS", "GCXO"), List.of("ravine", "mountain", "short", "panoramic"), 86.0),
+            new VisualWaypoint("tf-el-medano", "El Medano", 28.0465, -16.5360, List.of("GCTS", "GCXO"), List.of("coast", "beach", "short", "island"), 78.0),
+            new VisualWaypoint("tf-roque-cinchado", "Roque Cinchado", 28.2236, -16.6320, List.of("GCTS", "GCXO"), List.of("volcano", "mountain", "panoramic"), 88.0),
+            new VisualWaypoint("tf-santa-cruz", "Santa Cruz de Tenerife", 28.4636, -16.2518, List.of("GCTS", "GCXO"), List.of("urban", "coast", "historic"), 76.0)
     );
 
     private static final List<FlightRoute> ROUTES = List.of(

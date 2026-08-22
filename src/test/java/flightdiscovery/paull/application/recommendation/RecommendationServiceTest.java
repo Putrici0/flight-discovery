@@ -2,6 +2,7 @@ package flightdiscovery.paull.application.recommendation;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 import java.util.List;
@@ -96,7 +97,7 @@ class RecommendationServiceTest {
 
     @Test
     void returnsWarningWhenFewerThanThreeRoutesAreAvailableAfterFiltering() {
-        var response = recommendationService.recommend(requestWithAvailableTime(5));
+        var response = recommendationService.recommend(requestWithAvailableTime(1));
 
         assertTrue(response.recommendations().size() < 3);
         assertTrue(response.warnings().contains("Fewer than 3 candidate routes fit within the available flight time plus 25% tolerance."));
@@ -163,7 +164,7 @@ class RecommendationServiceTest {
 
     @Test
     void routeWarningsMentionSlightTimeOverrun() {
-        var recommendations = recommendationService.recommend(requestWithAvailableTime(10))
+        var recommendations = recommendationService.recommend(requestWithSafetyMargin(10, 15))
                 .recommendations()
                 .stream()
                 .filter(recommendation -> recommendation.warnings().contains("Esta ruta supera ligeramente el tiempo disponible"))
@@ -209,6 +210,41 @@ class RecommendationServiceTest {
                         : RouteType.GENERATED_TWO_WAYPOINTS,
                 generatedRoute.routeType()
         );
+    }
+
+    @Test
+    void doesNotReturnRoutesWithExactlySameWaypoints() {
+        var recommendations = recommendationService.recommend(requestWithAvailableTime(120)).recommendations();
+        var waypointSignatures = recommendations.stream()
+                .map(recommendation -> recommendation.waypoints().stream()
+                        .map(waypoint -> waypoint.name().toLowerCase())
+                        .sorted()
+                        .reduce((first, second) -> first + "|" + second)
+                        .orElse(recommendation.id()))
+                .toList();
+
+        assertEquals(waypointSignatures.size(), waypointSignatures.stream().distinct().count());
+    }
+
+    @Test
+    void mixesRouteTypesWhenGoodAlternativesExist() {
+        var routeTypes = recommendationService.recommend(requestWithAvailableTime(120))
+                .recommendations()
+                .stream()
+                .map(RecommendedRouteResponse::routeType)
+                .distinct()
+                .toList();
+
+        assertTrue(routeTypes.contains(RouteType.PREDEFINED));
+        assertTrue(routeTypes.contains(RouteType.GENERATED_ONE_WAYPOINT));
+        assertTrue(routeTypes.contains(RouteType.GENERATED_TWO_WAYPOINTS));
+    }
+
+    @Test
+    void avoidsReturningOnlyOnePrimaryTagWhenAlternativesExist() {
+        var recommendations = recommendationService.recommend(requestWithAvailableTime(120)).recommendations();
+
+        assertFalse(recommendations.stream().allMatch(recommendation -> recommendation.id().contains("coast")));
     }
 
     private RecommendationRequest requestWithAvailableTime(int availableTimeMinutes) {

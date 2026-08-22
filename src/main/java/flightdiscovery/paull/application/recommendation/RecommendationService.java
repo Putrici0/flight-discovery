@@ -1,7 +1,10 @@
 package flightdiscovery.paull.application.recommendation;
 
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import org.slf4j.Logger;
@@ -83,23 +86,86 @@ public class RecommendationService {
         LOGGER.info("Recommendation diagnostics: routesReachingScoring={} predefinedReachingScoring={} generatedReachingScoring={}",
                 routesForScoring.size(), predefinedRoutes.size(), generatedRoutes.size());
 
-        var scoredRecommendations = routesForScoring.stream()
-                .map(route -> toRecommendation(route, request, usefulFlightTimeMinutes, cruiseSpeedKmh, fuelBurnLitersPerHour))
+        var scoredRoutes = routesForScoring.stream()
+                .map(route -> new ScoredRoute(
+                        route,
+                        toRecommendation(route, request, usefulFlightTimeMinutes, cruiseSpeedKmh, fuelBurnLitersPerHour)
+                ))
                 .toList();
-        var usefulTimeViableRecommendations = scoredRecommendations.stream()
-                .filter(recommendation -> isWithinAllowedTime(recommendation, usefulFlightTimeMinutes))
+        var usefulTimeViableRoutes = scoredRoutes.stream()
+                .filter(scoredRoute -> isWithinAllowedTime(scoredRoute.recommendation(), usefulFlightTimeMinutes))
                 .toList();
-        var viableRecommendations = usefulTimeViableRecommendations.stream()
-                .sorted(Comparator.comparingDouble(RecommendedRouteResponse::totalScore).reversed())
-                .limit(MAX_RECOMMENDATIONS)
+        var viableRecommendations = diverseRecommendations(usefulTimeViableRoutes).stream()
+                .map(ScoredRoute::recommendation)
                 .toList();
         LOGGER.info("Recommendation diagnostics: scoredRecommendations={} discardedScoredRecommendationsByUsefulTime={} usefulTimeViableScoredRecommendations={} returnedRecommendations={}",
-                scoredRecommendations.size(),
-                scoredRecommendations.size() - usefulTimeViableRecommendations.size(),
-                usefulTimeViableRecommendations.size(),
+                scoredRoutes.size(),
+                scoredRoutes.size() - usefulTimeViableRoutes.size(),
+                usefulTimeViableRoutes.size(),
                 viableRecommendations.size());
 
         return new RecommendationResponse(viableRecommendations, warnings(viableRecommendations));
+    }
+
+    private List<ScoredRoute> diverseRecommendations(List<ScoredRoute> scoredRoutes) {
+        List<ScoredRoute> sortedRoutes = scoredRoutes.stream()
+                .sorted(Comparator.comparingDouble((ScoredRoute scoredRoute) -> scoredRoute.recommendation().totalScore()).reversed())
+                .toList();
+        List<ScoredRoute> selectedRoutes = new ArrayList<>();
+        Set<String> waypointSignatures = new HashSet<>();
+
+        addDiverseRoutes(sortedRoutes, selectedRoutes, waypointSignatures, true, true);
+        addDiverseRoutes(sortedRoutes, selectedRoutes, waypointSignatures, true, false);
+        addDiverseRoutes(sortedRoutes, selectedRoutes, waypointSignatures, false, false);
+
+        return selectedRoutes.stream()
+                .sorted(Comparator.comparingDouble((ScoredRoute scoredRoute) -> scoredRoute.recommendation().totalScore()).reversed())
+                .toList();
+    }
+
+    private void addDiverseRoutes(
+            List<ScoredRoute> sortedRoutes,
+            List<ScoredRoute> selectedRoutes,
+            Set<String> waypointSignatures,
+            boolean requireNewRouteType,
+            boolean requireNewPrimaryTag
+    ) {
+        for (ScoredRoute candidate : sortedRoutes) {
+            if (selectedRoutes.size() >= MAX_RECOMMENDATIONS) {
+                return;
+            }
+
+            String waypointSignature = waypointSignature(candidate.route());
+            if (waypointSignatures.contains(waypointSignature)
+                    || selectedRoutes.stream().anyMatch(selectedRoute -> selectedRoute.route().id().equals(candidate.route().id()))) {
+                continue;
+            }
+
+            if (requireNewRouteType && selectedRoutes.stream()
+                    .anyMatch(selectedRoute -> selectedRoute.route().routeType() == candidate.route().routeType())) {
+                continue;
+            }
+
+            if (requireNewPrimaryTag && selectedRoutes.stream()
+                    .anyMatch(selectedRoute -> primaryTag(selectedRoute.route()).equals(primaryTag(candidate.route())))) {
+                continue;
+            }
+
+            selectedRoutes.add(candidate);
+            waypointSignatures.add(waypointSignature);
+        }
+    }
+
+    private String waypointSignature(FlightRoute route) {
+        return route.waypoints().stream()
+                .map(waypoint -> waypoint.name().toLowerCase())
+                .sorted()
+                .reduce((first, second) -> first + "|" + second)
+                .orElse(route.id());
+    }
+
+    private String primaryTag(FlightRoute route) {
+        return route.tags().isEmpty() ? "" : route.tags().getFirst();
     }
 
     private Airport resolveDepartureAirport(String departureAirportCode) {
@@ -272,5 +338,11 @@ public class RecommendationService {
 
     private double roundTwoDecimals(double value) {
         return Math.round(value * 100.0) / 100.0;
+    }
+
+    private record ScoredRoute(
+            FlightRoute route,
+            RecommendedRouteResponse recommendation
+    ) {
     }
 }

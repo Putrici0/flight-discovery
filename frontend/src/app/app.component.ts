@@ -170,7 +170,7 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     return this.recommendations[this.selectedRouteIndex];
   }
 
-  protected routeTypeLabel(routeType: RouteType): string {
+  protected routeTypeLabel(routeType?: RouteType): string {
     switch (routeType) {
       case 'PREDEFINED':
         return 'Manual';
@@ -178,6 +178,8 @@ export class AppComponent implements AfterViewInit, OnDestroy {
         return 'Generada - 1 waypoint';
       case 'GENERATED_TWO_WAYPOINTS':
         return 'Generada - 2 waypoints';
+      default:
+        return 'Manual';
     }
   }
 

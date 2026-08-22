@@ -25,7 +25,7 @@ export interface RecommendedRoute {
   id: string;
   name: string;
   description: string;
-  routeType: RouteType;
+  routeType?: RouteType;
   waypoints: Waypoint[];
   approximateDistanceKm: number;
   estimatedTimeMinutes: number;
@@ -36,13 +36,13 @@ export interface RecommendedRoute {
   scoreBreakdown: {
     weatherScore: number;
     timeFitScore: number;
-    preferenceScore: number;
+    preferenceScore?: number;
     scenicScore: number;
     costScore: number;
     totalScore: number;
   };
   explanation: string;
-  warnings: string[];
+  warnings?: string[];
 }
 
 export interface RecommendationResponse {
