@@ -52,8 +52,8 @@ public class RouteRecommendationService {
             double fuelBurnLitersPerHour
     ) {
         double approximateDistanceKm = routeCalculationService.totalDistanceKm(route);
-        double estimatedTimeMinutes = routeCalculationService.estimatedTimeMinutes(approximateDistanceKm, cruiseSpeedKmh);
-        double estimatedTimeHours = routeCalculationService.estimatedTimeHours(estimatedTimeMinutes);
+        double estimatedTimeHours = routeCalculationService.estimatedTimeHours(approximateDistanceKm, cruiseSpeedKmh);
+        double estimatedTimeMinutes = routeCalculationService.estimatedTimeMinutes(estimatedTimeHours);
         double estimatedFuelLiters = routeCalculationService.estimatedFuelLiters(estimatedTimeMinutes, fuelBurnLitersPerHour);
         double estimatedCost = routeCalculationService.estimatedCost(estimatedFuelLiters, request.fuelPricePerLiter());
         RouteScore score = routeScoringService.score(

@@ -21,24 +21,24 @@ class RouteScoringServiceTest {
         RouteScore score = scoringService.score(route, 90.0, 120, 100.0);
 
         assertEquals(80.0, score.weatherScore(), 0.01);
-        assertEquals(100.0, score.timeFitScore(), 0.01);
+        assertEquals(86.5, score.timeFitScore(), 0.01);
         assertEquals(80.0, score.scenicScore(), 0.01);
         assertEquals(92.14, score.costScore(), 0.01);
-        assertEquals(87.82, score.totalScore(), 0.01);
+        assertEquals(83.77, score.totalScore(), 0.01);
     }
 
     @Test
     void givesStrongTimeFitWhenRouteUsesMostAvailableTime() {
         double timeFitScore = scoringService.timeFitScore(110.0, 120);
 
-        assertEquals(100.0, timeFitScore, 0.01);
+        assertEquals(70.0, timeFitScore, 0.01);
     }
 
     @Test
     void penalizesRoutesThatExceedAvailableTime() {
         double timeFitScore = scoringService.timeFitScore(150.0, 120);
 
-        assertEquals(33.0, timeFitScore, 0.01);
+        assertEquals(15.0, timeFitScore, 0.01);
     }
 
     @Test

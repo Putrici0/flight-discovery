@@ -36,23 +36,28 @@ public class RouteScoringService {
 
         double usageRatio = estimatedTimeMinutes / availableTimeMinutes;
 
-        if (estimatedTimeMinutes <= availableTimeMinutes) {
-            if (usageRatio >= 0.65) {
-                return 100.0;
-            }
+        if (usageRatio <= 0.0) {
+            return 0.0;
+        }
 
-            return Math.max(65.0, 100.0 - (0.65 - usageRatio) * 80.0);
+        if (usageRatio <= 0.85) {
+            double distanceFromIdeal = Math.abs(usageRatio - 0.60);
+            return Math.max(60.0, 100.0 - distanceFromIdeal * 90.0);
+        }
+
+        if (usageRatio <= 1.0) {
+            return 78.0 - (usageRatio - 0.85) * 120.0;
         }
 
         if (usageRatio <= 1.15) {
-            return 70.0 - (usageRatio - 1.0) * 180.0;
+            return 45.0 - (usageRatio - 1.0) * 160.0;
         }
 
         if (usageRatio <= 1.5) {
-            return 43.0 - (usageRatio - 1.15) * 100.0;
+            return 21.0 - (usageRatio - 1.15) * 60.0;
         }
 
-        return Math.max(0.0, 8.0 - (usageRatio - 1.5) * 20.0);
+        return 0.0;
     }
 
     public double costScore(double estimatedCost) {

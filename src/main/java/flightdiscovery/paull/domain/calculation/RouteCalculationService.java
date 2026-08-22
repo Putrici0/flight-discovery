@@ -47,16 +47,16 @@ public class RouteCalculationService {
         return totalDistance;
     }
 
-    public double estimatedTimeMinutes(double distanceKm, double cruiseSpeedKmh) {
+    public double estimatedTimeHours(double distanceKm, double cruiseSpeedKmh) {
         if (cruiseSpeedKmh <= 0.0) {
             return 0.0;
         }
 
-        return distanceKm / cruiseSpeedKmh * 60.0;
+        return distanceKm / cruiseSpeedKmh;
     }
 
-    public double estimatedTimeHours(double estimatedTimeMinutes) {
-        return estimatedTimeMinutes / 60.0;
+    public double estimatedTimeMinutes(double estimatedTimeHours) {
+        return estimatedTimeHours * 60.0;
     }
 
     public double estimatedFuelLiters(double estimatedTimeMinutes, double fuelBurnLitersPerHour) {

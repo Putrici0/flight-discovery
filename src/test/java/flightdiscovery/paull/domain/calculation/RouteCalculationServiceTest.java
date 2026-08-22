@@ -45,8 +45,10 @@ class RouteCalculationServiceTest {
 
     @Test
     void calculatesEstimatedTimeFromDistanceAndCruiseSpeed() {
-        double estimatedTime = calculator.estimatedTimeMinutes(220.0, 220.0);
+        double estimatedHours = calculator.estimatedTimeHours(220.0, 220.0);
+        double estimatedTime = calculator.estimatedTimeMinutes(estimatedHours);
 
+        assertEquals(1.0, estimatedHours, 0.01);
         assertEquals(60.0, estimatedTime, 0.01);
     }
 
