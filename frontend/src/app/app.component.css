@@ -154,13 +154,54 @@ select:focus {
   font-size: 1.1rem;
 }
 
+.detail-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.detail-header strong {
+  border-radius: 999px;
+  padding: 6px 11px;
+  color: #7a2e0e;
+  background: #fed7aa;
+  font-size: 0.95rem;
+}
+
 .selected-detail p {
   margin-bottom: 12px;
   color: #475467;
 }
 
-.selected-detail dl {
+.selected-detail dl,
+.selected-detail ul {
   margin-bottom: 0;
+}
+
+.selected-detail h4 {
+  margin: 16px 0 8px;
+  color: #344054;
+  font-size: 0.92rem;
+}
+
+.warnings,
+.route-warnings {
+  color: #7a2e0e;
+}
+
+.warnings ul,
+.route-warnings {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.route-warnings {
+  margin: 10px 0 0;
+  font-size: 0.86rem;
+  font-weight: 700;
 }
 
 .empty-state,
@@ -239,14 +280,25 @@ select:focus {
   color: #475467;
 }
 
-dl {
+.metrics-grid,
+.score-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin: 14px 0;
 }
 
-dl div {
+.score-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-top: 10px;
+}
+
+.score-grid.compact {
+  margin-bottom: 0;
+}
+
+.metrics-grid div,
+.score-grid div {
   border-radius: 6px;
   background: #f4f7fa;
   padding: 10px;
@@ -278,13 +330,15 @@ dd {
     grid-template-columns: 1fr;
   }
 
-  dl {
+  .metrics-grid,
+  .score-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 440px) {
-  dl {
+  .metrics-grid,
+  .score-grid {
     grid-template-columns: 1fr;
   }
 }

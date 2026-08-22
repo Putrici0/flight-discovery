@@ -5,6 +5,7 @@ import java.util.List;
 import flightdiscovery.paull.domain.model.Aircraft;
 import flightdiscovery.paull.domain.model.Airport;
 import flightdiscovery.paull.domain.model.FlightRoute;
+import flightdiscovery.paull.domain.model.VisualWaypoint;
 import flightdiscovery.paull.domain.model.Waypoint;
 
 public final class MockFlightData {
@@ -36,6 +37,89 @@ public final class MockFlightData {
             new Aircraft("cessna-172", "Cessna 172", 226.0, 34.0, 151.0),
             new Aircraft("piper-pa-28", "Piper PA-28", 215.0, 36.0, 182.0),
             new Aircraft("diamond-da40", "Diamond DA40", 235.0, 28.0, 151.0)
+    );
+
+    private static final List<VisualWaypoint> VISUAL_WAYPOINTS = List.of(
+            new VisualWaypoint(
+                    "gc-maspalomas-dunes",
+                    "Dunas de Maspalomas",
+                    27.7406,
+                    -15.5846,
+                    List.of("coast", "island", "panoramic", "short"),
+                    9.0
+            ),
+            new VisualWaypoint(
+                    "gc-roque-nublo",
+                    "Roque Nublo",
+                    27.9676,
+                    -15.6007,
+                    List.of("mountain", "island", "panoramic"),
+                    9.4
+            ),
+            new VisualWaypoint(
+                    "gc-pico-de-las-nieves",
+                    "Pico de las Nieves",
+                    27.9621,
+                    -15.5715,
+                    List.of("mountain", "panoramic", "island"),
+                    9.1
+            ),
+            new VisualWaypoint(
+                    "gc-puerto-de-mogan",
+                    "Puerto de Mogan",
+                    27.8170,
+                    -15.7650,
+                    List.of("coast", "island", "short"),
+                    8.3
+            ),
+            new VisualWaypoint(
+                    "gc-agaete-cliffs",
+                    "Acantilados de Agaete",
+                    28.1005,
+                    -15.7104,
+                    List.of("coast", "panoramic", "island"),
+                    8.7
+            ),
+            new VisualWaypoint(
+                    "tf-teide",
+                    "Teide",
+                    28.2724,
+                    -16.6425,
+                    List.of("volcano", "mountain", "panoramic", "island"),
+                    9.8
+            ),
+            new VisualWaypoint(
+                    "tf-anaga",
+                    "Macizo de Anaga",
+                    28.5447,
+                    -16.2009,
+                    List.of("mountain", "coast", "panoramic", "island"),
+                    9.2
+            ),
+            new VisualWaypoint(
+                    "tf-los-gigantes",
+                    "Acantilados de Los Gigantes",
+                    28.2437,
+                    -16.8392,
+                    List.of("coast", "panoramic", "island"),
+                    9.0
+            ),
+            new VisualWaypoint(
+                    "tf-costa-adeje",
+                    "Costa Adeje",
+                    28.0866,
+                    -16.7350,
+                    List.of("coast", "short", "island"),
+                    8.0
+            ),
+            new VisualWaypoint(
+                    "tf-la-orotava",
+                    "Valle de La Orotava",
+                    28.3892,
+                    -16.5239,
+                    List.of("mountain", "panoramic", "island"),
+                    8.6
+            )
     );
 
     private static final List<FlightRoute> ROUTES = List.of(
@@ -129,5 +213,9 @@ public final class MockFlightData {
 
     public static List<FlightRoute> routes() {
         return ROUTES;
+    }
+
+    public static List<VisualWaypoint> visualWaypoints() {
+        return VISUAL_WAYPOINTS;
     }
 }

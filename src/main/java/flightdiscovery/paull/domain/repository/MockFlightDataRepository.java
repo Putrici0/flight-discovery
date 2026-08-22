@@ -8,6 +8,7 @@ import flightdiscovery.paull.domain.mock.MockFlightData;
 import flightdiscovery.paull.domain.model.Aircraft;
 import flightdiscovery.paull.domain.model.Airport;
 import flightdiscovery.paull.domain.model.FlightRoute;
+import flightdiscovery.paull.domain.model.VisualWaypoint;
 
 @Repository
 public class MockFlightDataRepository implements FlightDataRepository {
@@ -26,5 +27,9 @@ public class MockFlightDataRepository implements FlightDataRepository {
     public List<FlightRoute> routes() {
         return MockFlightData.routes();
     }
-}
 
+    @Override
+    public List<VisualWaypoint> visualWaypoints() {
+        return MockFlightData.visualWaypoints();
+    }
+}

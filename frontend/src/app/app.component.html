@@ -113,26 +113,71 @@
         <p class="error" *ngIf="errorMessage">{{ errorMessage }}</p>
 
         <section class="selected-detail" *ngIf="selectedRoute() as route">
-          <h3>{{ route.name }}</h3>
-          <p>{{ route.explanation }}</p>
-          <dl>
+          <header class="detail-header">
             <div>
-              <dt>Tiempo</dt>
-              <dd>{{ route.estimatedTimeHours | number:'1.1-1' }} h</dd>
+              <h3>{{ route.name }}</h3>
+              <p>{{ route.explanation }}</p>
+            </div>
+            <strong>{{ route.totalScore | number:'1.0-1' }}</strong>
+          </header>
+
+          <dl class="metrics-grid">
+            <div>
+              <dt>Duracion estimada</dt>
+              <dd>{{ route.estimatedTimeMinutes | number:'1.0-0' }} min</dd>
             </div>
             <div>
-              <dt>Score tiempo</dt>
+              <dt>Tiempo disponible</dt>
+              <dd>{{ form.availableFlightTimeMinutes }} min</dd>
+            </div>
+            <div>
+              <dt>Distancia</dt>
+              <dd>{{ route.approximateDistanceKm | number:'1.0-0' }} km</dd>
+            </div>
+            <div>
+              <dt>Combustible</dt>
+              <dd>{{ route.estimatedFuelLiters | number:'1.0-1' }} L</dd>
+            </div>
+            <div>
+              <dt>Coste</dt>
+              <dd>{{ route.estimatedCost | currency:'EUR':'symbol':'1.0-0' }}</dd>
+            </div>
+            <div>
+              <dt>Score total</dt>
+              <dd>{{ route.totalScore | number:'1.0-1' }}</dd>
+            </div>
+          </dl>
+
+          <h4>Desglose de scores</h4>
+          <dl class="score-grid">
+            <div>
+              <dt>Meteorologia</dt>
+              <dd>{{ route.scoreBreakdown.weatherScore | number:'1.0-0' }}</dd>
+            </div>
+            <div>
+              <dt>Tiempo</dt>
               <dd>{{ route.scoreBreakdown.timeFitScore | number:'1.0-0' }}</dd>
             </div>
             <div>
-              <dt>Score visual</dt>
+              <dt>Preferencia</dt>
+              <dd>{{ route.scoreBreakdown.preferenceScore | number:'1.0-0' }}</dd>
+            </div>
+            <div>
+              <dt>Visual</dt>
               <dd>{{ route.scoreBreakdown.scenicScore | number:'1.0-0' }}</dd>
             </div>
             <div>
-              <dt>Score coste</dt>
+              <dt>Coste</dt>
               <dd>{{ route.scoreBreakdown.costScore | number:'1.0-0' }}</dd>
             </div>
           </dl>
+
+          <div class="warnings" *ngIf="route.warnings.length">
+            <h4>Warnings</h4>
+            <ul>
+              <li *ngFor="let warning of route.warnings">{{ warning }}</li>
+            </ul>
+          </div>
         </section>
 
         <article
@@ -146,14 +191,18 @@
               <strong>{{ route.totalScore | number:'1.0-1' }}</strong>
             </header>
             <p>{{ route.description }}</p>
-            <dl>
+            <dl class="metrics-grid">
+              <div>
+                <dt>Duracion estimada</dt>
+                <dd>{{ route.estimatedTimeMinutes | number:'1.0-0' }} min</dd>
+              </div>
+              <div>
+                <dt>Tiempo disponible</dt>
+                <dd>{{ form.availableFlightTimeMinutes }} min</dd>
+              </div>
               <div>
                 <dt>Distancia</dt>
                 <dd>{{ route.approximateDistanceKm | number:'1.0-0' }} km</dd>
-              </div>
-              <div>
-                <dt>Tiempo</dt>
-                <dd>{{ route.estimatedTimeMinutes | number:'1.0-0' }} min</dd>
               </div>
               <div>
                 <dt>Combustible</dt>
@@ -163,7 +212,36 @@
                 <dt>Coste</dt>
                 <dd>{{ route.estimatedCost | currency:'EUR':'symbol':'1.0-0' }}</dd>
               </div>
+              <div>
+                <dt>Score total</dt>
+                <dd>{{ route.totalScore | number:'1.0-1' }}</dd>
+              </div>
             </dl>
+            <dl class="score-grid compact">
+              <div>
+                <dt>Meteo</dt>
+                <dd>{{ route.scoreBreakdown.weatherScore | number:'1.0-0' }}</dd>
+              </div>
+              <div>
+                <dt>Tiempo</dt>
+                <dd>{{ route.scoreBreakdown.timeFitScore | number:'1.0-0' }}</dd>
+              </div>
+              <div>
+                <dt>Preferencia</dt>
+                <dd>{{ route.scoreBreakdown.preferenceScore | number:'1.0-0' }}</dd>
+              </div>
+              <div>
+                <dt>Visual</dt>
+                <dd>{{ route.scoreBreakdown.scenicScore | number:'1.0-0' }}</dd>
+              </div>
+              <div>
+                <dt>Coste</dt>
+                <dd>{{ route.scoreBreakdown.costScore | number:'1.0-0' }}</dd>
+              </div>
+            </dl>
+            <ul class="route-warnings" *ngIf="route.warnings.length">
+              <li *ngFor="let warning of route.warnings">{{ warning }}</li>
+            </ul>
             <p class="explanation">{{ route.explanation }}</p>
           </button>
         </article>

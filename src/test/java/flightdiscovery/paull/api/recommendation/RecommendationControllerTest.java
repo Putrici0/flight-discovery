@@ -51,6 +51,7 @@ class RecommendationControllerTest {
                 .andExpect(jsonPath("$.recommendations[0].totalScore").isNumber())
                 .andExpect(jsonPath("$.recommendations[0].scoreBreakdown.totalScore").isNumber())
                 .andExpect(jsonPath("$.recommendations[0].explanation").exists())
+                .andExpect(jsonPath("$.recommendations[0].warnings").isArray())
                 .andExpect(jsonPath("$.warnings").isArray());
     }
 

@@ -22,6 +22,8 @@ public class RouteRecommendationService {
 
     private static final int MAX_RECOMMENDATIONS = 3;
     private static final double MAX_ALLOWED_TIME_OVERRUN_RATIO = 1.25;
+    private static final double LOW_TIME_MARGIN_RATIO = 0.90;
+    private static final double HIGH_COST_THRESHOLD_EUR = 150.0;
 
     private final FlightDataRepository flightDataRepository;
     private final RouteCalculationService routeCalculationService;
@@ -95,8 +97,27 @@ public class RouteRecommendationService {
                 roundTwoDecimals(estimatedCost),
                 score.totalScore(),
                 score,
-                explanation(route, request, estimatedTimeMinutes, estimatedFuelLiters, estimatedCost, score)
+                explanation(route, request, estimatedTimeMinutes, estimatedFuelLiters, estimatedCost, score),
+                routeWarnings(estimatedTimeMinutes, request.availableFlightTimeMinutes(), estimatedCost)
         );
+    }
+
+    private List<String> routeWarnings(double estimatedTimeMinutes, int availableTimeMinutes, double estimatedCost) {
+        List<String> warnings = new java.util.ArrayList<>();
+
+        if (estimatedTimeMinutes > availableTimeMinutes) {
+            warnings.add("Esta ruta supera ligeramente el tiempo disponible");
+        } else if (estimatedTimeMinutes >= availableTimeMinutes * LOW_TIME_MARGIN_RATIO) {
+            warnings.add("Esta ruta deja poco margen de tiempo");
+        }
+
+        if (estimatedCost >= HIGH_COST_THRESHOLD_EUR) {
+            warnings.add("El coste estimado es alto");
+        }
+
+        warnings.add("La meteorologia todavia es simulada");
+
+        return warnings;
     }
 
     private double resolveCruiseSpeed(RecommendationRequest request) {

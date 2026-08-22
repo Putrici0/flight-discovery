@@ -32,15 +32,18 @@ export interface RecommendedRoute {
   scoreBreakdown: {
     weatherScore: number;
     timeFitScore: number;
+    preferenceScore: number;
     scenicScore: number;
     costScore: number;
     totalScore: number;
   };
   explanation: string;
+  warnings: string[];
 }
 
 export interface RecommendationResponse {
   recommendations: RecommendedRoute[];
+  warnings: string[];
 }
 
 @Injectable({ providedIn: 'root' })

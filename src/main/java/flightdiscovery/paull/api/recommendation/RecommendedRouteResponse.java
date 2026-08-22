@@ -17,6 +17,7 @@ public record RecommendedRouteResponse(
         double estimatedCost,
         double totalScore,
         RouteScore scoreBreakdown,
-        String explanation
+        String explanation,
+        List<String> warnings
 ) {
 }

@@ -98,6 +98,40 @@ class RouteRecommendationServiceTest {
         assertEquals(40.6, manualOverrideRoute.estimatedFuelLiters(), 0.01);
     }
 
+    @Test
+    void routeWarningsAlwaysMentionSimulatedWeather() {
+        var recommendation = recommendationService.recommend(requestWithAvailableTime(120))
+                .recommendations()
+                .getFirst();
+
+        assertTrue(recommendation.warnings().contains("La meteorologia todavia es simulada"));
+    }
+
+    @Test
+    void routeWarningsMentionLowTimeMargin() {
+        var recommendation = routeById(recommendationService.recommend(requestWithAvailableTime(23))
+                .recommendations(), "gclp-coastal-south");
+
+        assertTrue(recommendation.warnings().contains("Esta ruta deja poco margen de tiempo"));
+    }
+
+    @Test
+    void routeWarningsMentionSlightTimeOverrun() {
+        var recommendation = routeById(recommendationService.recommend(requestWithAvailableTime(19))
+                .recommendations(), "gclp-coastal-south");
+
+        assertTrue(recommendation.warnings().contains("Esta ruta supera ligeramente el tiempo disponible"));
+    }
+
+    @Test
+    void routeWarningsMentionHighEstimatedCost() {
+        var recommendation = recommendationService.recommend(requestWithFuelPrice(20.0))
+                .recommendations()
+                .getFirst();
+
+        assertTrue(recommendation.warnings().contains("El coste estimado es alto"));
+    }
+
     private RecommendationRequest requestWithAvailableTime(int availableTimeMinutes) {
         return new RecommendationRequest(
                 "GCLP",
@@ -130,6 +164,18 @@ class RouteRecommendationServiceTest {
                 null,
                 null,
                 2.3,
+                "coast"
+        );
+    }
+
+    private RecommendationRequest requestWithFuelPrice(double fuelPricePerLiter) {
+        return new RecommendationRequest(
+                "GCLP",
+                120,
+                "cessna-172",
+                226.0,
+                34.0,
+                fuelPricePerLiter,
                 "coast"
         );
     }
