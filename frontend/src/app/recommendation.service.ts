@@ -18,10 +18,13 @@ export interface Waypoint {
   longitude: number;
 }
 
+export type RouteType = 'PREDEFINED' | 'GENERATED_ONE_WAYPOINT' | 'GENERATED_TWO_WAYPOINTS';
+
 export interface RecommendedRoute {
   id: string;
   name: string;
   description: string;
+  routeType: RouteType;
   waypoints: Waypoint[];
   approximateDistanceKm: number;
   estimatedTimeMinutes: number;

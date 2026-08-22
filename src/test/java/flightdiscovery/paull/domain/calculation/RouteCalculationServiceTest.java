@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import flightdiscovery.paull.domain.model.Airport;
 import flightdiscovery.paull.domain.model.FlightRoute;
+import flightdiscovery.paull.domain.model.RouteType;
 import flightdiscovery.paull.domain.model.Waypoint;
 
 class RouteCalculationServiceTest {
@@ -28,6 +29,7 @@ class RouteCalculationServiceTest {
                 "test-route",
                 "Test route",
                 "Test route",
+                RouteType.PREDEFINED,
                 departure,
                 List.of(
                         new Waypoint("Waypoint 1", 0.0, 1.0),

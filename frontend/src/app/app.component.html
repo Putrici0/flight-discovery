@@ -115,7 +115,10 @@
         <section class="selected-detail" *ngIf="selectedRoute() as route">
           <header class="detail-header">
             <div>
-              <h3>{{ route.name }}</h3>
+              <div class="title-row">
+                <h3>{{ route.name }}</h3>
+                <span class="route-type">{{ routeTypeLabel(route.routeType) }}</span>
+              </div>
               <p>{{ route.explanation }}</p>
             </div>
             <strong>{{ route.totalScore | number:'1.0-1' }}</strong>
@@ -187,7 +190,10 @@
         >
           <button type="button" class="route-button" (click)="selectRoute(index)">
             <header>
-              <h3>{{ route.name }}</h3>
+              <div class="title-row">
+                <h3>{{ route.name }}</h3>
+                <span class="route-type">{{ routeTypeLabel(route.routeType) }}</span>
+              </div>
               <strong>{{ route.totalScore | number:'1.0-1' }}</strong>
             </header>
             <p>{{ route.description }}</p>

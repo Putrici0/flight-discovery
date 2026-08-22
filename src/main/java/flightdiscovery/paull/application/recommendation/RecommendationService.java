@@ -16,32 +16,40 @@ import flightdiscovery.paull.domain.model.Aircraft;
 import flightdiscovery.paull.domain.model.Airport;
 import flightdiscovery.paull.domain.model.FlightRoute;
 import flightdiscovery.paull.domain.model.RouteScore;
-import flightdiscovery.paull.domain.repository.FlightDataRepository;
+import flightdiscovery.paull.domain.repository.MockAircraftRepository;
+import flightdiscovery.paull.domain.repository.MockAirportRepository;
+import flightdiscovery.paull.domain.repository.MockRouteRepository;
 import flightdiscovery.paull.domain.scoring.RouteScoringService;
 
 @Service
-public class RouteRecommendationService {
+public class RecommendationService {
 
     private static final int MAX_RECOMMENDATIONS = 3;
     private static final double MAX_ALLOWED_TIME_OVERRUN_RATIO = 1.25;
     private static final double LOW_TIME_MARGIN_RATIO = 0.90;
     private static final double HIGH_COST_THRESHOLD_EUR = 150.0;
 
-    private final FlightDataRepository flightDataRepository;
+    private final MockRouteRepository routeRepository;
+    private final MockAirportRepository airportRepository;
+    private final MockAircraftRepository aircraftRepository;
     private final RouteCalculationService routeCalculationService;
     private final RouteScoringService routeScoringService;
-    private final CandidateRouteGenerator candidateRouteGenerator;
+    private final RouteCandidateGenerator routeCandidateGenerator;
 
-    public RouteRecommendationService(
-            FlightDataRepository flightDataRepository,
+    public RecommendationService(
+            MockRouteRepository routeRepository,
+            MockAirportRepository airportRepository,
+            MockAircraftRepository aircraftRepository,
             RouteCalculationService routeCalculationService,
             RouteScoringService routeScoringService,
-            CandidateRouteGenerator candidateRouteGenerator
+            RouteCandidateGenerator routeCandidateGenerator
     ) {
-        this.flightDataRepository = flightDataRepository;
+        this.routeRepository = routeRepository;
+        this.airportRepository = airportRepository;
+        this.aircraftRepository = aircraftRepository;
         this.routeCalculationService = routeCalculationService;
         this.routeScoringService = routeScoringService;
-        this.candidateRouteGenerator = candidateRouteGenerator;
+        this.routeCandidateGenerator = routeCandidateGenerator;
     }
 
     public RecommendationResponse recommend(RecommendationRequest request) {
@@ -49,9 +57,8 @@ public class RouteRecommendationService {
         double fuelBurnLitersPerHour = resolveFuelBurn(request);
 
         Airport departureAirport = resolveDepartureAirport(request.departureAirport());
-        var predefinedRoutes = flightDataRepository.routes().stream()
-                .filter(route -> route.departureAirport().code().equalsIgnoreCase(departureAirport.code()));
-        var generatedRoutes = candidateRouteGenerator.generate(
+        var predefinedRoutes = routeRepository.findByDepartureAirportCode(departureAirport.code()).stream();
+        var generatedRoutes = routeCandidateGenerator.generate(
                 departureAirport,
                 request.availableFlightTimeMinutes(),
                 cruiseSpeedKmh,
@@ -69,9 +76,7 @@ public class RouteRecommendationService {
     }
 
     private Airport resolveDepartureAirport(String departureAirportCode) {
-        return flightDataRepository.airports().stream()
-                .filter(airport -> airport.code().equalsIgnoreCase(departureAirportCode))
-                .findFirst()
+        return airportRepository.findByCode(departureAirportCode)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.BAD_REQUEST,
                         "departureAirport must match a known airport"
@@ -113,6 +118,7 @@ public class RouteRecommendationService {
                 route.id(),
                 route.name(),
                 route.description(),
+                route.routeType(),
                 route.waypoints(),
                 round(approximateDistanceKm),
                 round(estimatedTimeMinutes),
@@ -149,7 +155,7 @@ public class RouteRecommendationService {
             return request.cruiseSpeedKmh();
         }
 
-        return flightDataRepository.findAircraftById(request.aircraftId())
+        return aircraftRepository.findById(request.aircraftId())
                 .map(Aircraft::cruiseSpeedKmh)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.BAD_REQUEST,
@@ -162,7 +168,7 @@ public class RouteRecommendationService {
             return request.fuelBurnLitersPerHour();
         }
 
-        return flightDataRepository.findAircraftById(request.aircraftId())
+        return aircraftRepository.findById(request.aircraftId())
                 .map(Aircraft::fuelBurnLitersPerHour)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.BAD_REQUEST,

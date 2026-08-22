@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import flightdiscovery.paull.domain.model.Airport;
 import flightdiscovery.paull.domain.model.FlightRoute;
 import flightdiscovery.paull.domain.model.RouteScore;
+import flightdiscovery.paull.domain.model.RouteType;
 
 class RouteScoringServiceTest {
 
@@ -84,6 +85,7 @@ class RouteScoringServiceTest {
                 "test-route",
                 "Test route",
                 "Test route",
+                RouteType.PREDEFINED,
                 new Airport("TEST", "Test Airport", 0.0, 0.0),
                 List.of(),
                 tags,

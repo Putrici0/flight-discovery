@@ -42,6 +42,7 @@ class RecommendationControllerTest {
                 .andExpect(jsonPath("$.recommendations.length()", lessThanOrEqualTo(3)))
                 .andExpect(jsonPath("$.recommendations[0].name").exists())
                 .andExpect(jsonPath("$.recommendations[0].description").exists())
+                .andExpect(jsonPath("$.recommendations[0].routeType").exists())
                 .andExpect(jsonPath("$.recommendations[0].waypoints").isArray())
                 .andExpect(jsonPath("$.recommendations[0].approximateDistanceKm").isNumber())
                 .andExpect(jsonPath("$.recommendations[0].estimatedTimeMinutes").isNumber())

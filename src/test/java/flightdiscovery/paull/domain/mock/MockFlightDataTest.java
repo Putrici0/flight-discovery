@@ -5,15 +5,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
-import flightdiscovery.paull.domain.repository.MockFlightDataRepository;
+import flightdiscovery.paull.domain.repository.MockWaypointRepository;
 
 class MockFlightDataTest {
 
-    private final MockFlightDataRepository repository = new MockFlightDataRepository();
+    private final MockWaypointRepository repository = new MockWaypointRepository();
 
     @Test
     void providesPreparedVisualWaypointCatalogForCanaryIslands() {
-        var waypoints = repository.visualWaypoints();
+        var waypoints = repository.findAll();
 
         assertTrue(waypoints.size() >= 10);
         assertTrue(waypoints.stream().anyMatch(waypoint -> waypoint.id().startsWith("gc-")));
@@ -22,7 +22,7 @@ class MockFlightDataTest {
 
     @Test
     void visualWaypointsHaveTagsAndScenicValue() {
-        var waypoints = repository.visualWaypoints();
+        var waypoints = repository.findAll();
 
         assertTrue(waypoints.stream().allMatch(waypoint -> waypoint.id() != null && !waypoint.id().isBlank()));
         assertTrue(waypoints.stream().allMatch(waypoint -> waypoint.scenicValue() >= 0.0));

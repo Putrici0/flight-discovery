@@ -9,24 +9,25 @@ import org.springframework.stereotype.Service;
 import flightdiscovery.paull.domain.calculation.RouteCalculationService;
 import flightdiscovery.paull.domain.model.Airport;
 import flightdiscovery.paull.domain.model.FlightRoute;
+import flightdiscovery.paull.domain.model.RouteType;
 import flightdiscovery.paull.domain.model.VisualWaypoint;
 import flightdiscovery.paull.domain.model.Waypoint;
-import flightdiscovery.paull.domain.repository.FlightDataRepository;
+import flightdiscovery.paull.domain.repository.MockWaypointRepository;
 
 @Service
-public class CandidateRouteGenerator {
+public class RouteCandidateGenerator {
 
     private static final double MAX_ALLOWED_TIME_OVERRUN_RATIO = 1.25;
     private static final int MAX_GENERATED_ROUTES = 30;
 
-    private final FlightDataRepository flightDataRepository;
+    private final MockWaypointRepository waypointRepository;
     private final RouteCalculationService routeCalculationService;
 
-    public CandidateRouteGenerator(
-            FlightDataRepository flightDataRepository,
+    public RouteCandidateGenerator(
+            MockWaypointRepository waypointRepository,
             RouteCalculationService routeCalculationService
     ) {
-        this.flightDataRepository = flightDataRepository;
+        this.waypointRepository = waypointRepository;
         this.routeCalculationService = routeCalculationService;
     }
 
@@ -36,7 +37,7 @@ public class CandidateRouteGenerator {
             double cruiseSpeedKmh,
             String preference
     ) {
-        List<VisualWaypoint> prioritizedWaypoints = flightDataRepository.visualWaypoints().stream()
+        List<VisualWaypoint> prioritizedWaypoints = waypointRepository.findAll().stream()
                 .sorted(waypointComparator(preference))
                 .toList();
 
@@ -65,6 +66,7 @@ public class CandidateRouteGenerator {
                 "Circular a " + waypoint.name(),
                 "Ruta circular generada desde " + departureAirport.code()
                         + " hacia " + waypoint.name() + " y regreso al aeropuerto de salida.",
+                RouteType.GENERATED_ONE_WAYPOINT,
                 departureAirport,
                 List.of(new Waypoint(waypoint.name(), waypoint.latitude(), waypoint.longitude())),
                 waypoint.tags(),
@@ -84,6 +86,7 @@ public class CandidateRouteGenerator {
                 "Ruta circular generada desde " + departureAirport.code()
                         + " hacia " + firstWaypoint.name() + ", " + secondWaypoint.name()
                         + " y regreso al aeropuerto de salida.",
+                RouteType.GENERATED_TWO_WAYPOINTS,
                 departureAirport,
                 List.of(
                         new Waypoint(firstWaypoint.name(), firstWaypoint.latitude(), firstWaypoint.longitude()),

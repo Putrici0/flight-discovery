@@ -5,6 +5,7 @@ import java.util.List;
 import flightdiscovery.paull.domain.model.Aircraft;
 import flightdiscovery.paull.domain.model.Airport;
 import flightdiscovery.paull.domain.model.FlightRoute;
+import flightdiscovery.paull.domain.model.RouteType;
 import flightdiscovery.paull.domain.model.VisualWaypoint;
 import flightdiscovery.paull.domain.model.Waypoint;
 
@@ -127,6 +128,7 @@ public final class MockFlightData {
                     "gclp-coastal-south",
                     "Costa sur de Gran Canaria",
                     "Ruta costera recreativa desde GCLP siguiendo el litoral sur de la isla.",
+                    RouteType.PREDEFINED,
                     GCLP,
                     List.of(
                             new Waypoint("Maspalomas", 27.7606, -15.5860),
@@ -142,6 +144,7 @@ public final class MockFlightData {
                     "gclp-panoramic-central",
                     "Panoramica central de Gran Canaria",
                     "Ruta panoramica hacia el interior para sobrevolar referencias visuales del centro de la isla.",
+                    RouteType.PREDEFINED,
                     GCLP,
                     List.of(
                             new Waypoint("Telde", 27.9955, -15.4174),
@@ -157,6 +160,7 @@ public final class MockFlightData {
                     "gclp-tenerife-island-hop",
                     "Salto entre islas a Tenerife",
                     "Ruta entre islas desde GCLP hacia Tenerife con puntos visuales de aproximacion a la isla.",
+                    RouteType.PREDEFINED,
                     GCLP,
                     List.of(
                             new Waypoint("Punta de Sardina", 28.1640, -15.7100),
@@ -172,6 +176,7 @@ public final class MockFlightData {
                     "gcts-south-coast",
                     "Costa sur de Tenerife",
                     "Ruta recreativa desde Tenerife Sur por la costa meridional.",
+                    RouteType.PREDEFINED,
                     GCTS,
                     List.of(
                             new Waypoint("Los Cristianos", 28.0516, -16.7206),
@@ -187,6 +192,7 @@ public final class MockFlightData {
                     "gcxo-north-scenic",
                     "Norte panoramico de Tenerife",
                     "Ruta desde Tenerife Norte para disfrutar de referencias visuales del norte de la isla.",
+                    RouteType.PREDEFINED,
                     GCXO,
                     List.of(
                             new Waypoint("La Orotava", 28.3892, -16.5239),

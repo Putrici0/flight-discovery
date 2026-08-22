@@ -11,16 +11,22 @@ import org.junit.jupiter.api.Test;
 import flightdiscovery.paull.api.recommendation.RecommendationRequest;
 import flightdiscovery.paull.api.recommendation.RecommendedRouteResponse;
 import flightdiscovery.paull.domain.calculation.RouteCalculationService;
-import flightdiscovery.paull.domain.repository.MockFlightDataRepository;
+import flightdiscovery.paull.domain.model.RouteType;
+import flightdiscovery.paull.domain.repository.MockAircraftRepository;
+import flightdiscovery.paull.domain.repository.MockAirportRepository;
+import flightdiscovery.paull.domain.repository.MockRouteRepository;
+import flightdiscovery.paull.domain.repository.MockWaypointRepository;
 import flightdiscovery.paull.domain.scoring.RouteScoringService;
 
-class RouteRecommendationServiceTest {
+class RecommendationServiceTest {
 
-    private final RouteRecommendationService recommendationService = new RouteRecommendationService(
-            new MockFlightDataRepository(),
+    private final RecommendationService recommendationService = new RecommendationService(
+            new MockRouteRepository(),
+            new MockAirportRepository(),
+            new MockAircraftRepository(),
             new RouteCalculationService(),
             new RouteScoringService(),
-            new CandidateRouteGenerator(new MockFlightDataRepository(), new RouteCalculationService())
+            new RouteCandidateGenerator(new MockWaypointRepository(), new RouteCalculationService())
     );
 
     @Test
@@ -142,6 +148,10 @@ class RouteRecommendationServiceTest {
         var recommendations = recommendationService.recommend(requestWithAvailableTime(120)).recommendations();
 
         assertTrue(recommendations.stream().anyMatch(recommendation -> recommendation.id().startsWith("generated-")));
+        assertTrue(recommendations.stream()
+                .filter(recommendation -> recommendation.id().startsWith("generated-"))
+                .allMatch(recommendation -> recommendation.routeType() == RouteType.GENERATED_ONE_WAYPOINT
+                        || recommendation.routeType() == RouteType.GENERATED_TWO_WAYPOINTS));
     }
 
     @Test
@@ -155,6 +165,12 @@ class RouteRecommendationServiceTest {
 
         assertTrue(generatedRoute.waypoints().size() >= 1);
         assertTrue(generatedRoute.waypoints().size() <= 2);
+        assertEquals(
+                generatedRoute.waypoints().size() == 1
+                        ? RouteType.GENERATED_ONE_WAYPOINT
+                        : RouteType.GENERATED_TWO_WAYPOINTS,
+                generatedRoute.routeType()
+        );
     }
 
     private RecommendationRequest requestWithAvailableTime(int availableTimeMinutes) {
@@ -215,13 +231,6 @@ class RouteRecommendationServiceTest {
                 2.3,
                 "coast"
         );
-    }
-
-    private RecommendedRouteResponse routeById(List<RecommendedRouteResponse> recommendations, String routeId) {
-        return recommendations.stream()
-                .filter(recommendation -> recommendation.id().equals(routeId))
-                .findFirst()
-                .orElseThrow();
     }
 
     private RoutePair firstCommonRoutePair(

@@ -5,16 +5,16 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import flightdiscovery.paull.application.recommendation.RouteRecommendationService;
+import flightdiscovery.paull.application.recommendation.RecommendationService;
 import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/recommendations")
 public class RecommendationController {
 
-    private final RouteRecommendationService recommendationService;
+    private final RecommendationService recommendationService;
 
-    public RecommendationController(RouteRecommendationService recommendationService) {
+    public RecommendationController(RecommendationService recommendationService) {
         this.recommendationService = recommendationService;
     }
 

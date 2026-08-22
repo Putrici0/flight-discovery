@@ -8,6 +8,7 @@ import {
   RecommendationRequest,
   RecommendationService,
   RecommendedRoute,
+  RouteType,
   Waypoint
 } from './recommendation.service';
 
@@ -166,6 +167,17 @@ export class AppComponent implements AfterViewInit, OnDestroy {
 
   protected selectedRoute(): RecommendedRoute | undefined {
     return this.recommendations[this.selectedRouteIndex];
+  }
+
+  protected routeTypeLabel(routeType: RouteType): string {
+    switch (routeType) {
+      case 'PREDEFINED':
+        return 'Manual';
+      case 'GENERATED_ONE_WAYPOINT':
+        return 'Generada - 1 waypoint';
+      case 'GENERATED_TWO_WAYPOINTS':
+        return 'Generada - 2 waypoints';
+    }
   }
 
   protected applyAircraftDefaults(): void {

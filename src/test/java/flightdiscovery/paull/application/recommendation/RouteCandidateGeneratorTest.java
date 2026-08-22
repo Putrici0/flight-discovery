@@ -6,13 +6,14 @@ import org.junit.jupiter.api.Test;
 
 import flightdiscovery.paull.domain.calculation.RouteCalculationService;
 import flightdiscovery.paull.domain.mock.MockFlightData;
-import flightdiscovery.paull.domain.repository.MockFlightDataRepository;
+import flightdiscovery.paull.domain.model.RouteType;
+import flightdiscovery.paull.domain.repository.MockWaypointRepository;
 
-class CandidateRouteGeneratorTest {
+class RouteCandidateGeneratorTest {
 
     private final RouteCalculationService routeCalculationService = new RouteCalculationService();
-    private final CandidateRouteGenerator generator = new CandidateRouteGenerator(
-            new MockFlightDataRepository(),
+    private final RouteCandidateGenerator generator = new RouteCandidateGenerator(
+            new MockWaypointRepository(),
             routeCalculationService
     );
 
@@ -23,6 +24,9 @@ class CandidateRouteGeneratorTest {
         assertTrue(routes.stream().anyMatch(route -> route.id().startsWith("generated-")));
         assertTrue(routes.stream().allMatch(route -> route.departureAirport().code().equals("GCLP")));
         assertTrue(routes.stream().anyMatch(route -> route.waypoints().size() == 1));
+        assertTrue(routes.stream()
+                .filter(route -> route.waypoints().size() == 1)
+                .allMatch(route -> route.routeType() == RouteType.GENERATED_ONE_WAYPOINT));
         assertTrue(routes.stream().allMatch(route -> route.waypoints().size() <= 2));
     }
 
@@ -31,6 +35,9 @@ class CandidateRouteGeneratorTest {
         var routes = generator.generate(MockFlightData.GCLP, 180, 226.0, "coast");
 
         assertTrue(routes.stream().anyMatch(route -> route.waypoints().size() == 2));
+        assertTrue(routes.stream()
+                .filter(route -> route.waypoints().size() == 2)
+                .allMatch(route -> route.routeType() == RouteType.GENERATED_TWO_WAYPOINTS));
     }
 
     @Test
