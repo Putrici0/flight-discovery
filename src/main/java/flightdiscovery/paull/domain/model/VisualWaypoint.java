@@ -7,8 +7,8 @@ public record VisualWaypoint(
         String name,
         double latitude,
         double longitude,
+        List<String> compatibleDepartureAirportCodes,
         List<String> tags,
         double scenicValue
 ) {
 }
-

@@ -46,6 +46,7 @@ public final class MockFlightData {
                     "Dunas de Maspalomas",
                     27.7406,
                     -15.5846,
+                    List.of("GCLP"),
                     List.of("coast", "island", "panoramic", "short"),
                     9.0
             ),
@@ -54,6 +55,7 @@ public final class MockFlightData {
                     "Roque Nublo",
                     27.9676,
                     -15.6007,
+                    List.of("GCLP"),
                     List.of("mountain", "island", "panoramic"),
                     9.4
             ),
@@ -62,6 +64,7 @@ public final class MockFlightData {
                     "Pico de las Nieves",
                     27.9621,
                     -15.5715,
+                    List.of("GCLP"),
                     List.of("mountain", "panoramic", "island"),
                     9.1
             ),
@@ -70,6 +73,7 @@ public final class MockFlightData {
                     "Puerto de Mogan",
                     27.8170,
                     -15.7650,
+                    List.of("GCLP"),
                     List.of("coast", "island", "short"),
                     8.3
             ),
@@ -78,6 +82,7 @@ public final class MockFlightData {
                     "Acantilados de Agaete",
                     28.1005,
                     -15.7104,
+                    List.of("GCLP"),
                     List.of("coast", "panoramic", "island"),
                     8.7
             ),
@@ -86,6 +91,7 @@ public final class MockFlightData {
                     "Teide",
                     28.2724,
                     -16.6425,
+                    List.of("GCTS", "GCXO"),
                     List.of("volcano", "mountain", "panoramic", "island"),
                     9.8
             ),
@@ -94,6 +100,7 @@ public final class MockFlightData {
                     "Macizo de Anaga",
                     28.5447,
                     -16.2009,
+                    List.of("GCTS", "GCXO"),
                     List.of("mountain", "coast", "panoramic", "island"),
                     9.2
             ),
@@ -102,6 +109,7 @@ public final class MockFlightData {
                     "Acantilados de Los Gigantes",
                     28.2437,
                     -16.8392,
+                    List.of("GCTS", "GCXO"),
                     List.of("coast", "panoramic", "island"),
                     9.0
             ),
@@ -110,6 +118,7 @@ public final class MockFlightData {
                     "Costa Adeje",
                     28.0866,
                     -16.7350,
+                    List.of("GCTS", "GCXO"),
                     List.of("coast", "short", "island"),
                     8.0
             ),
@@ -118,6 +127,7 @@ public final class MockFlightData {
                     "Valle de La Orotava",
                     28.3892,
                     -16.5239,
+                    List.of("GCTS", "GCXO"),
                     List.of("mountain", "panoramic", "island"),
                     8.6
             )
