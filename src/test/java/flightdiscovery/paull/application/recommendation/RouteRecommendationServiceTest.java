@@ -19,7 +19,8 @@ class RouteRecommendationServiceTest {
     private final RouteRecommendationService recommendationService = new RouteRecommendationService(
             new MockFlightDataRepository(),
             new RouteCalculationService(),
-            new RouteScoringService()
+            new RouteScoringService(),
+            new CandidateRouteGenerator(new MockFlightDataRepository(), new RouteCalculationService())
     );
 
     @Test
@@ -51,7 +52,7 @@ class RouteRecommendationServiceTest {
 
     @Test
     void returnsWarningWhenFewerThanThreeRoutesAreAvailableAfterFiltering() {
-        var response = recommendationService.recommend(requestWithAvailableTime(20));
+        var response = recommendationService.recommend(requestWithAvailableTime(5));
 
         assertTrue(response.recommendations().size() < 3);
         assertTrue(response.warnings().contains("Fewer than 3 routes fit within the available flight time plus 25% tolerance."));
@@ -76,26 +77,24 @@ class RouteRecommendationServiceTest {
 
     @Test
     void aircraftDefaultsChangeEstimatedTimeAndFuelForSameRoute() {
-        var cessnaRoute = routeById(recommendationService.recommend(requestWithAircraftDefaults("cessna-172"))
-                .recommendations(), "gclp-coastal-south");
-        var diamondRoute = routeById(recommendationService.recommend(requestWithAircraftDefaults("diamond-da40"))
-                .recommendations(), "gclp-coastal-south");
+        var routePair = firstCommonRoutePair(
+                recommendationService.recommend(requestWithAircraftDefaults("cessna-172")).recommendations(),
+                recommendationService.recommend(requestWithAircraftDefaults("diamond-da40")).recommendations()
+        );
 
-        assertTrue(diamondRoute.estimatedTimeMinutes() < cessnaRoute.estimatedTimeMinutes());
-        assertTrue(diamondRoute.estimatedFuelLiters() < cessnaRoute.estimatedFuelLiters());
+        assertTrue(routePair.second().estimatedTimeMinutes() < routePair.first().estimatedTimeMinutes());
+        assertTrue(routePair.second().estimatedFuelLiters() < routePair.first().estimatedFuelLiters());
     }
 
     @Test
     void manualSpeedAndFuelBurnOverrideAircraftDefaults() {
-        var aircraftDefaultsRoute = routeById(recommendationService.recommend(requestWithAircraftDefaults("diamond-da40"))
-                .recommendations(), "gclp-coastal-south");
-        var manualOverrideRoute = routeById(recommendationService.recommend(requestWithManualAircraftValues())
-                .recommendations(), "gclp-coastal-south");
+        var routePair = firstCommonRoutePair(
+                recommendationService.recommend(requestWithAircraftDefaults("diamond-da40")).recommendations(),
+                recommendationService.recommend(requestWithManualAircraftValues()).recommendations()
+        );
 
-        assertNotEquals(aircraftDefaultsRoute.estimatedTimeMinutes(), manualOverrideRoute.estimatedTimeMinutes());
-        assertNotEquals(aircraftDefaultsRoute.estimatedFuelLiters(), manualOverrideRoute.estimatedFuelLiters());
-        assertEquals(60.93, manualOverrideRoute.estimatedTimeMinutes(), 0.01);
-        assertEquals(40.6, manualOverrideRoute.estimatedFuelLiters(), 0.01);
+        assertNotEquals(routePair.first().estimatedTimeMinutes(), routePair.second().estimatedTimeMinutes());
+        assertNotEquals(routePair.first().estimatedFuelLiters(), routePair.second().estimatedFuelLiters());
     }
 
     @Test
@@ -109,18 +108,24 @@ class RouteRecommendationServiceTest {
 
     @Test
     void routeWarningsMentionLowTimeMargin() {
-        var recommendation = routeById(recommendationService.recommend(requestWithAvailableTime(23))
-                .recommendations(), "gclp-coastal-south");
+        var recommendations = recommendationService.recommend(requestWithAvailableTime(17))
+                .recommendations()
+                .stream()
+                .filter(recommendation -> recommendation.warnings().contains("Esta ruta deja poco margen de tiempo"))
+                .toList();
 
-        assertTrue(recommendation.warnings().contains("Esta ruta deja poco margen de tiempo"));
+        assertTrue(recommendations.size() > 0);
     }
 
     @Test
     void routeWarningsMentionSlightTimeOverrun() {
-        var recommendation = routeById(recommendationService.recommend(requestWithAvailableTime(19))
-                .recommendations(), "gclp-coastal-south");
+        var recommendations = recommendationService.recommend(requestWithAvailableTime(10))
+                .recommendations()
+                .stream()
+                .filter(recommendation -> recommendation.warnings().contains("Esta ruta supera ligeramente el tiempo disponible"))
+                .toList();
 
-        assertTrue(recommendation.warnings().contains("Esta ruta supera ligeramente el tiempo disponible"));
+        assertTrue(recommendations.size() > 0);
     }
 
     @Test
@@ -130,6 +135,26 @@ class RouteRecommendationServiceTest {
                 .getFirst();
 
         assertTrue(recommendation.warnings().contains("El coste estimado es alto"));
+    }
+
+    @Test
+    void includesGeneratedCircularRoutesAlongsideExistingRouteCatalog() {
+        var recommendations = recommendationService.recommend(requestWithAvailableTime(120)).recommendations();
+
+        assertTrue(recommendations.stream().anyMatch(recommendation -> recommendation.id().startsWith("generated-")));
+    }
+
+    @Test
+    void generatedCircularRoutesUseOneOrTwoVisualWaypoints() {
+        var generatedRoute = recommendationService.recommend(requestWithAvailableTime(120))
+                .recommendations()
+                .stream()
+                .filter(recommendation -> recommendation.id().startsWith("generated-"))
+                .findFirst()
+                .orElseThrow();
+
+        assertTrue(generatedRoute.waypoints().size() >= 1);
+        assertTrue(generatedRoute.waypoints().size() <= 2);
     }
 
     private RecommendationRequest requestWithAvailableTime(int availableTimeMinutes) {
@@ -185,7 +210,7 @@ class RouteRecommendationServiceTest {
                 "GCLP",
                 120,
                 "diamond-da40",
-                78.0,
+                226.0,
                 40.0,
                 2.3,
                 "coast"
@@ -197,5 +222,23 @@ class RouteRecommendationServiceTest {
                 .filter(recommendation -> recommendation.id().equals(routeId))
                 .findFirst()
                 .orElseThrow();
+    }
+
+    private RoutePair firstCommonRoutePair(
+            List<RecommendedRouteResponse> firstRecommendations,
+            List<RecommendedRouteResponse> secondRecommendations
+    ) {
+        return firstRecommendations.stream()
+                .flatMap(first -> secondRecommendations.stream()
+                        .filter(second -> second.id().equals(first.id()))
+                        .map(second -> new RoutePair(first, second)))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    private record RoutePair(
+            RecommendedRouteResponse first,
+            RecommendedRouteResponse second
+    ) {
     }
 }

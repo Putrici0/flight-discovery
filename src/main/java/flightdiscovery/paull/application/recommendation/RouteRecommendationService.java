@@ -2,6 +2,7 @@ package flightdiscovery.paull.application.recommendation;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Stream;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -12,6 +13,7 @@ import flightdiscovery.paull.api.recommendation.RecommendationResponse;
 import flightdiscovery.paull.api.recommendation.RecommendedRouteResponse;
 import flightdiscovery.paull.domain.calculation.RouteCalculationService;
 import flightdiscovery.paull.domain.model.Aircraft;
+import flightdiscovery.paull.domain.model.Airport;
 import flightdiscovery.paull.domain.model.FlightRoute;
 import flightdiscovery.paull.domain.model.RouteScore;
 import flightdiscovery.paull.domain.repository.FlightDataRepository;
@@ -28,23 +30,35 @@ public class RouteRecommendationService {
     private final FlightDataRepository flightDataRepository;
     private final RouteCalculationService routeCalculationService;
     private final RouteScoringService routeScoringService;
+    private final CandidateRouteGenerator candidateRouteGenerator;
 
     public RouteRecommendationService(
             FlightDataRepository flightDataRepository,
             RouteCalculationService routeCalculationService,
-            RouteScoringService routeScoringService
+            RouteScoringService routeScoringService,
+            CandidateRouteGenerator candidateRouteGenerator
     ) {
         this.flightDataRepository = flightDataRepository;
         this.routeCalculationService = routeCalculationService;
         this.routeScoringService = routeScoringService;
+        this.candidateRouteGenerator = candidateRouteGenerator;
     }
 
     public RecommendationResponse recommend(RecommendationRequest request) {
         double cruiseSpeedKmh = resolveCruiseSpeed(request);
         double fuelBurnLitersPerHour = resolveFuelBurn(request);
 
-        var viableRecommendations = flightDataRepository.routes().stream()
-                .filter(route -> route.departureAirport().code().equalsIgnoreCase(request.departureAirport()))
+        Airport departureAirport = resolveDepartureAirport(request.departureAirport());
+        var predefinedRoutes = flightDataRepository.routes().stream()
+                .filter(route -> route.departureAirport().code().equalsIgnoreCase(departureAirport.code()));
+        var generatedRoutes = candidateRouteGenerator.generate(
+                departureAirport,
+                request.availableFlightTimeMinutes(),
+                cruiseSpeedKmh,
+                request.preference()
+        ).stream();
+
+        var viableRecommendations = Stream.concat(predefinedRoutes, generatedRoutes)
                 .map(route -> toRecommendation(route, request, cruiseSpeedKmh, fuelBurnLitersPerHour))
                 .filter(recommendation -> isWithinAllowedTime(recommendation, request.availableFlightTimeMinutes()))
                 .sorted(Comparator.comparingDouble(RecommendedRouteResponse::totalScore).reversed())
@@ -52,6 +66,16 @@ public class RouteRecommendationService {
                 .toList();
 
         return new RecommendationResponse(viableRecommendations, warnings(viableRecommendations));
+    }
+
+    private Airport resolveDepartureAirport(String departureAirportCode) {
+        return flightDataRepository.airports().stream()
+                .filter(airport -> airport.code().equalsIgnoreCase(departureAirportCode))
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "departureAirport must match a known airport"
+                ));
     }
 
     private boolean isWithinAllowedTime(RecommendedRouteResponse recommendation, int availableTimeMinutes) {

@@ -83,7 +83,7 @@ class RecommendationControllerTest {
         String requestBody = """
                 {
                   "departureAirport": "GCLP",
-                  "availableFlightTimeMinutes": 20,
+                  "availableFlightTimeMinutes": 5,
                   "aircraftId": "cessna-172",
                   "cruiseSpeedKmh": 226,
                   "fuelBurnLitersPerHour": 34,
