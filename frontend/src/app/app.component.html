@@ -1,0 +1,173 @@
+<main class="page">
+  <section class="intro">
+    <p class="eyebrow">Flight Discovery</p>
+    <h1>Recomendador de rutas</h1>
+    <p>Introduce los datos basicos del vuelo y calcula rutas recreativas viables.</p>
+  </section>
+
+  <section class="workspace">
+    <form class="panel form-panel" (ngSubmit)="recommendRoutes()" #routeForm="ngForm">
+      <label>
+        Aeropuerto de salida
+        <select
+          name="departureAirport"
+          [(ngModel)]="form.departureAirport"
+          required
+        >
+          <option *ngFor="let airport of airports" [value]="airport.code">
+            {{ airport.code }} - {{ airport.name }}
+          </option>
+        </select>
+      </label>
+
+      <label>
+        Tiempo disponible
+        <input
+          name="availableFlightTimeMinutes"
+          type="number"
+          min="1"
+          [(ngModel)]="form.availableFlightTimeMinutes"
+          required
+        >
+      </label>
+
+      <label>
+        Avion
+        <select
+          name="aircraftId"
+          [(ngModel)]="form.aircraftId"
+          (ngModelChange)="applyAircraftDefaults()"
+          required
+        >
+          <option *ngFor="let aircraft of aircraftOptions" [value]="aircraft.id">
+            {{ aircraft.name }}
+          </option>
+        </select>
+      </label>
+
+      <label>
+        Velocidad crucero
+        <input
+          name="cruiseSpeedKmh"
+          type="number"
+          min="1"
+          step="1"
+          [(ngModel)]="form.cruiseSpeedKmh"
+          required
+        >
+      </label>
+
+      <label>
+        Consumo por hora
+        <input
+          name="fuelBurnLitersPerHour"
+          type="number"
+          min="0"
+          step="0.1"
+          [(ngModel)]="form.fuelBurnLitersPerHour"
+          required
+        >
+      </label>
+
+      <label>
+        Precio combustible
+        <input
+          name="fuelPricePerLiter"
+          type="number"
+          min="0"
+          step="0.01"
+          [(ngModel)]="form.fuelPricePerLiter"
+          required
+        >
+      </label>
+
+      <label>
+        Preferencia de ruta
+        <select name="preference" [(ngModel)]="form.preference" required>
+          <option *ngFor="let preference of preferences" [value]="preference.value">
+            {{ preference.label }}
+          </option>
+        </select>
+      </label>
+
+      <button type="submit" [disabled]="routeForm.invalid || isLoading">
+        {{ isLoading ? 'Calculando...' : 'Recomendar rutas' }}
+      </button>
+    </form>
+
+    <section class="results-area">
+      <div class="panel map-panel">
+        <div id="route-map" class="route-map" aria-label="Mapa de rutas recomendadas"></div>
+      </div>
+
+      <section class="panel results-panel">
+        <div class="results-heading">
+          <h2>Resultados</h2>
+          <span *ngIf="recommendations.length">{{ recommendations.length }} rutas</span>
+        </div>
+
+        <p class="empty-state" *ngIf="!isLoading && !errorMessage && recommendations.length === 0">
+          Todavia no hay recomendaciones.
+        </p>
+
+        <p class="error" *ngIf="errorMessage">{{ errorMessage }}</p>
+
+        <section class="selected-detail" *ngIf="selectedRoute() as route">
+          <h3>{{ route.name }}</h3>
+          <p>{{ route.explanation }}</p>
+          <dl>
+            <div>
+              <dt>Tiempo</dt>
+              <dd>{{ route.estimatedTimeHours | number:'1.1-1' }} h</dd>
+            </div>
+            <div>
+              <dt>Score tiempo</dt>
+              <dd>{{ route.scoreBreakdown.timeFitScore | number:'1.0-0' }}</dd>
+            </div>
+            <div>
+              <dt>Score visual</dt>
+              <dd>{{ route.scoreBreakdown.scenicScore | number:'1.0-0' }}</dd>
+            </div>
+            <div>
+              <dt>Score coste</dt>
+              <dd>{{ route.scoreBreakdown.costScore | number:'1.0-0' }}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <article
+          class="route"
+          *ngFor="let route of recommendations; let index = index"
+          [class.selected]="index === selectedRouteIndex"
+        >
+          <button type="button" class="route-button" (click)="selectRoute(index)">
+            <header>
+              <h3>{{ route.name }}</h3>
+              <strong>{{ route.totalScore | number:'1.0-1' }}</strong>
+            </header>
+            <p>{{ route.description }}</p>
+            <dl>
+              <div>
+                <dt>Distancia</dt>
+                <dd>{{ route.approximateDistanceKm | number:'1.0-0' }} km</dd>
+              </div>
+              <div>
+                <dt>Tiempo</dt>
+                <dd>{{ route.estimatedTimeMinutes | number:'1.0-0' }} min</dd>
+              </div>
+              <div>
+                <dt>Combustible</dt>
+                <dd>{{ route.estimatedFuelLiters | number:'1.0-1' }} L</dd>
+              </div>
+              <div>
+                <dt>Coste</dt>
+                <dd>{{ route.estimatedCost | currency:'EUR':'symbol':'1.0-0' }}</dd>
+              </div>
+            </dl>
+            <p class="explanation">{{ route.explanation }}</p>
+          </button>
+        </article>
+      </section>
+    </section>
+  </section>
+</main>

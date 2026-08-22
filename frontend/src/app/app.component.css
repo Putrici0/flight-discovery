@@ -1,0 +1,290 @@
+.page {
+  width: min(1120px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 48px 0;
+}
+
+.intro {
+  margin-bottom: 28px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: #246b68;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 10px;
+  color: #14213d;
+  font-size: clamp(2rem, 4vw, 3.5rem);
+  line-height: 1.05;
+}
+
+.intro p:last-child {
+  max-width: 620px;
+  margin-bottom: 0;
+  color: #475467;
+  font-size: 1.05rem;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(280px, 380px) 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+.panel {
+  border: 1px solid #d0d8e0;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+}
+
+.form-panel {
+  display: grid;
+  gap: 16px;
+  padding: 22px;
+}
+
+label {
+  display: grid;
+  gap: 7px;
+  color: #344054;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+input,
+select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #b8c4d0;
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: #101828;
+  background: #ffffff;
+}
+
+input:focus,
+select:focus {
+  border-color: #247a78;
+  outline: 3px solid rgba(36, 122, 120, 0.16);
+}
+
+.form-panel > button {
+  min-height: 46px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 18px;
+  color: #ffffff;
+  background: #1f6f6d;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.form-panel > button:disabled {
+  background: #98a2b3;
+  cursor: not-allowed;
+}
+
+.results-area {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.map-panel {
+  overflow: hidden;
+  padding: 0;
+}
+
+.route-map {
+  width: 100%;
+  height: clamp(320px, 42vh, 520px);
+  min-height: 320px;
+}
+
+.results-panel {
+  padding: 22px;
+}
+
+.results-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.results-heading h2 {
+  margin: 0;
+  color: #14213d;
+  font-size: 1.35rem;
+}
+
+.results-heading span {
+  color: #246b68;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.selected-detail {
+  border: 1px solid #f2c7ad;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  padding: 16px;
+  background: #fff7ed;
+}
+
+.selected-detail h3 {
+  margin-bottom: 8px;
+  color: #14213d;
+  font-size: 1.1rem;
+}
+
+.selected-detail p {
+  margin-bottom: 12px;
+  color: #475467;
+}
+
+.selected-detail dl {
+  margin-bottom: 0;
+}
+
+.empty-state,
+.error {
+  margin: 0;
+  color: #667085;
+}
+
+.error {
+  margin-bottom: 16px;
+  color: #b42318;
+  font-weight: 700;
+}
+
+.route {
+  border-top: 1px solid #e4e9ef;
+  padding: 0;
+}
+
+.route:first-of-type {
+  border-top: 0;
+}
+
+.route:last-child {
+  padding-bottom: 0;
+}
+
+.route-button {
+  display: block;
+  width: calc(100% + 24px);
+  margin: 0 -12px;
+  border: 0;
+  border-radius: 6px;
+  padding: 18px 12px;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.route-button:focus {
+  outline: 3px solid rgba(36, 122, 120, 0.16);
+}
+
+.route-button:hover,
+.route.selected .route-button {
+  background: #f4f7fa;
+}
+
+.route.selected .route-button {
+  box-shadow: inset 4px 0 0 #d9480f;
+}
+
+.route header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.route h3 {
+  margin-bottom: 6px;
+  color: #14213d;
+  font-size: 1.08rem;
+}
+
+.route strong {
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: #174a48;
+  background: #d8f0ed;
+  font-size: 0.9rem;
+}
+
+.route p {
+  color: #475467;
+}
+
+dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+
+dl div {
+  border-radius: 6px;
+  background: #f4f7fa;
+  padding: 10px;
+}
+
+dt {
+  color: #667085;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+dd {
+  margin: 4px 0 0;
+  color: #101828;
+  font-weight: 800;
+}
+
+.explanation {
+  margin-bottom: 0;
+}
+
+@media (max-width: 840px) {
+  .page {
+    width: min(100% - 24px, 640px);
+    padding: 28px 0;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 440px) {
+  dl {
+    grid-template-columns: 1fr;
+  }
+}

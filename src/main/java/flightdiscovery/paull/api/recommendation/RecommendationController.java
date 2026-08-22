@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import flightdiscovery.paull.application.recommendation.RouteRecommendationService;
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/recommendations")
@@ -18,7 +19,7 @@ public class RecommendationController {
     }
 
     @PostMapping
-    public RecommendationResponse recommend(@RequestBody RecommendationRequest request) {
+    public RecommendationResponse recommend(@Valid @RequestBody RecommendationRequest request) {
         return recommendationService.recommend(request);
     }
 }

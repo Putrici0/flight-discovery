@@ -45,10 +45,34 @@ class RecommendationControllerTest {
                 .andExpect(jsonPath("$.recommendations[0].waypoints").isArray())
                 .andExpect(jsonPath("$.recommendations[0].approximateDistanceKm").isNumber())
                 .andExpect(jsonPath("$.recommendations[0].estimatedTimeMinutes").isNumber())
+                .andExpect(jsonPath("$.recommendations[0].estimatedTimeHours").isNumber())
                 .andExpect(jsonPath("$.recommendations[0].estimatedFuelLiters").isNumber())
                 .andExpect(jsonPath("$.recommendations[0].estimatedCost").isNumber())
                 .andExpect(jsonPath("$.recommendations[0].totalScore").isNumber())
                 .andExpect(jsonPath("$.recommendations[0].scoreBreakdown.totalScore").isNumber())
                 .andExpect(jsonPath("$.recommendations[0].explanation").exists());
+    }
+
+    @Test
+    void returnsClearValidationErrorsForInvalidRequest() throws Exception {
+        String requestBody = """
+                {
+                  "departureAirport": "",
+                  "availableFlightTimeMinutes": 0,
+                  "aircraftId": "cessna-172",
+                  "cruiseSpeedKmh": 0,
+                  "fuelBurnLitersPerHour": 0,
+                  "fuelPricePerLiter": -1,
+                  "preference": ""
+                }
+                """;
+
+        mockMvc.perform(post("/api/recommendations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.message").value("Invalid recommendation request"))
+                .andExpect(jsonPath("$.errors").isArray());
     }
 }
