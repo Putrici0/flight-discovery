@@ -14,10 +14,10 @@ public record RecommendationRequest(
         String aircraftId,
 
         @DecimalMin(value = "0.0", inclusive = false, message = "cruiseSpeedKmh must be greater than 0")
-        double cruiseSpeedKmh,
+        Double cruiseSpeedKmh,
 
         @DecimalMin(value = "0.0", inclusive = false, message = "fuelBurnLitersPerHour must be greater than 0")
-        double fuelBurnLitersPerHour,
+        Double fuelBurnLitersPerHour,
 
         @DecimalMin(value = "0.0", message = "fuelPricePerLiter must be greater than or equal to 0")
         double fuelPricePerLiter,

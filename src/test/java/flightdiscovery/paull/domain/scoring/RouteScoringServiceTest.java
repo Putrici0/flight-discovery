@@ -1,6 +1,7 @@
 package flightdiscovery.paull.domain.scoring;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 
@@ -24,8 +25,8 @@ class RouteScoringServiceTest {
         assertEquals(86.5, score.timeFitScore(), 0.01);
         assertEquals(100.0, score.preferenceScore(), 0.01);
         assertEquals(80.0, score.scenicScore(), 0.01);
-        assertEquals(92.14, score.costScore(), 0.01);
-        assertEquals(86.56, score.totalScore(), 0.01);
+        assertEquals(60.0, score.costScore(), 0.01);
+        assertEquals(84.95, score.totalScore(), 0.01);
     }
 
     @Test
@@ -44,10 +45,11 @@ class RouteScoringServiceTest {
 
     @Test
     void penalizesHigherEstimatedCosts() {
-        assertEquals(100.0, scoringService.costScore(80.0), 0.01);
-        assertEquals(80.36, scoringService.costScore(130.0), 0.01);
-        assertEquals(60.71, scoringService.costScore(180.0), 0.01);
-        assertEquals(45.0, scoringService.costScore(220.0), 0.01);
+        assertEquals(100.0, scoringService.costScore(0.0), 0.01);
+        assertEquals(80.0, scoringService.costScore(50.0), 0.01);
+        assertEquals(40.0, scoringService.costScore(150.0), 0.01);
+        assertEquals(0.0, scoringService.costScore(250.0), 0.01);
+        assertEquals(0.0, scoringService.costScore(500.0), 0.01);
     }
 
     @Test
@@ -66,6 +68,17 @@ class RouteScoringServiceTest {
         assertEquals(45.0, scoringService.preferenceScore(nonMatchingRoute, "coast"), 0.01);
     }
 
+    @Test
+    void totalScoreAlwaysStaysBetweenZeroAndOneHundred() {
+        FlightRoute route = routeWithScenicScoreAndTags(20.0, List.of("coast"));
+
+        RouteScore cheapRouteScore = scoringService.score(route, 72.0, 120, -10.0, "coast");
+        RouteScore expensiveRouteScore = scoringService.score(route, 250.0, 120, 1000.0, "unknown");
+
+        assertScoreInRange(cheapRouteScore.totalScore());
+        assertScoreInRange(expensiveRouteScore.totalScore());
+    }
+
     private FlightRoute routeWithScenicScoreAndTags(double scenicScore, List<String> tags) {
         return new FlightRoute(
                 "test-route",
@@ -78,5 +91,10 @@ class RouteScoringServiceTest {
                 0.0,
                 scenicScore
         );
+    }
+
+    private void assertScoreInRange(double score) {
+        assertTrue(score >= 0.0);
+        assertTrue(score <= 100.0);
     }
 }

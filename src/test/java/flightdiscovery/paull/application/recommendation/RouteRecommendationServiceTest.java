@@ -1,11 +1,15 @@
 package flightdiscovery.paull.application.recommendation;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
 import flightdiscovery.paull.api.recommendation.RecommendationRequest;
+import flightdiscovery.paull.api.recommendation.RecommendedRouteResponse;
 import flightdiscovery.paull.domain.calculation.RouteCalculationService;
 import flightdiscovery.paull.domain.repository.MockFlightDataRepository;
 import flightdiscovery.paull.domain.scoring.RouteScoringService;
@@ -70,6 +74,30 @@ class RouteRecommendationServiceTest {
         assertTrue(recommendation.explanation().contains("preferencia mountain"));
     }
 
+    @Test
+    void aircraftDefaultsChangeEstimatedTimeAndFuelForSameRoute() {
+        var cessnaRoute = routeById(recommendationService.recommend(requestWithAircraftDefaults("cessna-172"))
+                .recommendations(), "gclp-coastal-south");
+        var diamondRoute = routeById(recommendationService.recommend(requestWithAircraftDefaults("diamond-da40"))
+                .recommendations(), "gclp-coastal-south");
+
+        assertTrue(diamondRoute.estimatedTimeMinutes() < cessnaRoute.estimatedTimeMinutes());
+        assertTrue(diamondRoute.estimatedFuelLiters() < cessnaRoute.estimatedFuelLiters());
+    }
+
+    @Test
+    void manualSpeedAndFuelBurnOverrideAircraftDefaults() {
+        var aircraftDefaultsRoute = routeById(recommendationService.recommend(requestWithAircraftDefaults("diamond-da40"))
+                .recommendations(), "gclp-coastal-south");
+        var manualOverrideRoute = routeById(recommendationService.recommend(requestWithManualAircraftValues())
+                .recommendations(), "gclp-coastal-south");
+
+        assertNotEquals(aircraftDefaultsRoute.estimatedTimeMinutes(), manualOverrideRoute.estimatedTimeMinutes());
+        assertNotEquals(aircraftDefaultsRoute.estimatedFuelLiters(), manualOverrideRoute.estimatedFuelLiters());
+        assertEquals(60.93, manualOverrideRoute.estimatedTimeMinutes(), 0.01);
+        assertEquals(40.6, manualOverrideRoute.estimatedFuelLiters(), 0.01);
+    }
+
     private RecommendationRequest requestWithAvailableTime(int availableTimeMinutes) {
         return new RecommendationRequest(
                 "GCLP",
@@ -92,5 +120,36 @@ class RouteRecommendationServiceTest {
                 2.3,
                 preference
         );
+    }
+
+    private RecommendationRequest requestWithAircraftDefaults(String aircraftId) {
+        return new RecommendationRequest(
+                "GCLP",
+                120,
+                aircraftId,
+                null,
+                null,
+                2.3,
+                "coast"
+        );
+    }
+
+    private RecommendationRequest requestWithManualAircraftValues() {
+        return new RecommendationRequest(
+                "GCLP",
+                120,
+                "diamond-da40",
+                78.0,
+                40.0,
+                2.3,
+                "coast"
+        );
+    }
+
+    private RecommendedRouteResponse routeById(List<RecommendedRouteResponse> recommendations, String routeId) {
+        return recommendations.stream()
+                .filter(recommendation -> recommendation.id().equals(routeId))
+                .findFirst()
+                .orElseThrow();
     }
 }

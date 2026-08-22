@@ -9,6 +9,7 @@ import flightdiscovery.paull.domain.model.RouteScore;
 public class RouteScoringService {
 
     private static final double MOCK_WEATHER_SCORE = 80.0;
+    private static final double MAX_COST_FOR_SCORE = 250.0;
 
     public RouteScore score(
             FlightRoute route,
@@ -22,11 +23,11 @@ public class RouteScoringService {
         double preferenceScore = preferenceScore(route, preference);
         double scenicScore = scenicScore(route);
         double costScore = costScore(estimatedCost);
-        double totalScore = weatherScore * 0.20
+        double totalScore = clampScore(weatherScore * 0.20
                 + timeFitScore * 0.30
                 + preferenceScore * 0.20
                 + scenicScore * 0.25
-                + costScore * 0.05;
+                + costScore * 0.05);
 
         return new RouteScore(
                 round(weatherScore),
@@ -70,15 +71,11 @@ public class RouteScoringService {
     }
 
     public double costScore(double estimatedCost) {
-        if (estimatedCost <= 80.0) {
+        if (estimatedCost <= 0.0) {
             return 100.0;
         }
 
-        if (estimatedCost >= 220.0) {
-            return 45.0;
-        }
-
-        return 100.0 - (estimatedCost - 80.0) * 55.0 / 140.0;
+        return clampScore(100.0 - estimatedCost / MAX_COST_FOR_SCORE * 100.0);
     }
 
     public double scenicScore(FlightRoute route) {
@@ -102,5 +99,9 @@ public class RouteScoringService {
 
     private double round(double value) {
         return Math.round(value * 100.0) / 100.0;
+    }
+
+    private double clampScore(double value) {
+        return Math.max(0.0, Math.min(100.0, value));
     }
 }

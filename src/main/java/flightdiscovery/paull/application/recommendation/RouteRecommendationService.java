@@ -3,7 +3,9 @@ package flightdiscovery.paull.application.recommendation;
 import java.util.Comparator;
 import java.util.List;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import flightdiscovery.paull.api.recommendation.RecommendationRequest;
 import flightdiscovery.paull.api.recommendation.RecommendationResponse;
@@ -98,23 +100,29 @@ public class RouteRecommendationService {
     }
 
     private double resolveCruiseSpeed(RecommendationRequest request) {
-        if (request.cruiseSpeedKmh() > 0) {
+        if (request.cruiseSpeedKmh() != null) {
             return request.cruiseSpeedKmh();
         }
 
         return flightDataRepository.findAircraftById(request.aircraftId())
                 .map(Aircraft::cruiseSpeedKmh)
-                .orElse(200.0);
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "aircraftId must match a known aircraft when cruiseSpeedKmh is not provided"
+                ));
     }
 
     private double resolveFuelBurn(RecommendationRequest request) {
-        if (request.fuelBurnLitersPerHour() > 0) {
+        if (request.fuelBurnLitersPerHour() != null) {
             return request.fuelBurnLitersPerHour();
         }
 
         return flightDataRepository.findAircraftById(request.aircraftId())
                 .map(Aircraft::fuelBurnLitersPerHour)
-                .orElse(35.0);
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "aircraftId must match a known aircraft when fuelBurnLitersPerHour is not provided"
+                ));
     }
 
     private String explanation(
