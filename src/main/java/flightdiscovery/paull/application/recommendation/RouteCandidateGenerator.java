@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import flightdiscovery.paull.domain.calculation.RouteCalculationService;
@@ -17,6 +19,7 @@ import flightdiscovery.paull.domain.repository.MockWaypointRepository;
 @Service
 public class RouteCandidateGenerator {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(RouteCandidateGenerator.class);
     private static final double MAX_ALLOWED_TIME_OVERRUN_RATIO = 1.25;
     private static final int MAX_GENERATED_ROUTES = 30;
 
@@ -40,6 +43,8 @@ public class RouteCandidateGenerator {
         List<VisualWaypoint> prioritizedWaypoints = waypointRepository.findAll().stream()
                 .sorted(waypointComparator(preference))
                 .toList();
+        LOGGER.info("Recommendation diagnostics: visualWaypoints={} departureAirport={} usefulFlightTimeMinutes={}",
+                prioritizedWaypoints.size(), departureAirport.code(), round(availableTimeMinutes));
 
         List<FlightRoute> candidates = new ArrayList<>();
 
@@ -53,11 +58,19 @@ public class RouteCandidateGenerator {
             }
         }
 
-        return candidates.stream()
+        List<FlightRoute> timeViableCandidates = candidates.stream()
                 .filter(route -> fitsAvailableTime(route, availableTimeMinutes, cruiseSpeedKmh))
+                .toList();
+        LOGGER.info("Recommendation diagnostics: generatedCandidates={} discardedGeneratedCandidatesByTime={} timeViableGeneratedCandidates={}",
+                candidates.size(), candidates.size() - timeViableCandidates.size(), timeViableCandidates.size());
+
+        List<FlightRoute> limitedCandidates = timeViableCandidates.stream()
                 .sorted(routeComparator(preference))
                 .limit(MAX_GENERATED_ROUTES)
                 .toList();
+        LOGGER.info("Recommendation diagnostics: returnedGeneratedCandidatesAfterLimit={}", limitedCandidates.size());
+
+        return limitedCandidates;
     }
 
     private FlightRoute singleWaypointRoute(Airport departureAirport, VisualWaypoint waypoint) {
@@ -105,6 +118,10 @@ public class RouteCandidateGenerator {
         double estimatedTimeMinutes = routeCalculationService.estimatedTimeMinutes(estimatedTimeHours);
 
         return estimatedTimeMinutes <= availableTimeMinutes * MAX_ALLOWED_TIME_OVERRUN_RATIO;
+    }
+
+    private double round(double value) {
+        return Math.round(value * 100.0) / 100.0;
     }
 
     private boolean matchesPreference(VisualWaypoint waypoint, String preference) {

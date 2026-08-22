@@ -39,7 +39,7 @@ class RecommendationControllerTest {
                         .content(requestBody))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.recommendations.length()", lessThanOrEqualTo(3)))
+                .andExpect(jsonPath("$.recommendations.length()", lessThanOrEqualTo(5)))
                 .andExpect(jsonPath("$.recommendations[0].name").exists())
                 .andExpect(jsonPath("$.recommendations[0].description").exists())
                 .andExpect(jsonPath("$.recommendations[0].routeType").exists())

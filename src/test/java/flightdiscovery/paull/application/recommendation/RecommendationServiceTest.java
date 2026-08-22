@@ -57,14 +57,30 @@ class RecommendationServiceTest {
     }
 
     @Test
-    void usesSafetyMarginToReduceUsefulFlightTimeForFiltering() {
-        int availableTimeMinutes = 120;
+    void doesNotReturnRoutesThatExceedUsefulTimeTolerance() {
+        int availableTimeMinutes = 10;
         int safetyMarginPercent = 15;
-        double usefulFlightTimeMinutes = 102.0;
+        double usefulFlightTimeMinutes = 8.5;
         var response = recommendationService.recommend(requestWithSafetyMargin(availableTimeMinutes, safetyMarginPercent));
 
         assertTrue(response.recommendations().stream()
                 .allMatch(recommendation -> recommendation.estimatedTimeMinutes() <= usefulFlightTimeMinutes * 1.25));
+    }
+
+    @Test
+    void allowsRoutesUpToTwentyFivePercentOverUsefulTimeWithWarning() {
+        double usefulFlightTimeMinutes = 8.5;
+        var recommendations = recommendationService.recommend(requestWithSafetyMargin(10, 15))
+                .recommendations()
+                .stream()
+                .filter(recommendation -> recommendation.estimatedTimeMinutes() > usefulFlightTimeMinutes)
+                .toList();
+
+        assertTrue(recommendations.size() > 0);
+        assertTrue(recommendations.stream()
+                .allMatch(recommendation -> recommendation.estimatedTimeMinutes() <= usefulFlightTimeMinutes * 1.25));
+        assertTrue(recommendations.stream()
+                .allMatch(recommendation -> recommendation.warnings().contains("Esta ruta supera ligeramente el tiempo disponible")));
     }
 
     @Test
@@ -83,7 +99,7 @@ class RecommendationServiceTest {
         var response = recommendationService.recommend(requestWithAvailableTime(5));
 
         assertTrue(response.recommendations().size() < 3);
-        assertTrue(response.warnings().contains("Fewer than 3 routes fit within the available flight time plus 25% tolerance."));
+        assertTrue(response.warnings().contains("Fewer than 3 candidate routes fit within the available flight time plus 25% tolerance."));
     }
 
     @Test

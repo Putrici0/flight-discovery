@@ -4,6 +4,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -24,7 +26,9 @@ import flightdiscovery.paull.domain.scoring.RouteScoringService;
 @Service
 public class RecommendationService {
 
-    private static final int MAX_RECOMMENDATIONS = 3;
+    private static final Logger LOGGER = LoggerFactory.getLogger(RecommendationService.class);
+    private static final int MIN_RECOMMENDATIONS = 3;
+    private static final int MAX_RECOMMENDATIONS = 5;
     private static final double MAX_ALLOWED_TIME_OVERRUN_RATIO = 1.25;
     private static final double LOW_TIME_MARGIN_RATIO = 0.90;
     private static final double HIGH_COST_THRESHOLD_EUR = 150.0;
@@ -58,20 +62,42 @@ public class RecommendationService {
         double usefulFlightTimeMinutes = usefulFlightTimeMinutes(request);
 
         Airport departureAirport = resolveDepartureAirport(request.departureAirport());
-        var predefinedRoutes = routeRepository.findByDepartureAirportCode(departureAirport.code()).stream();
-        var generatedRoutes = routeCandidateGenerator.generate(
+        List<FlightRoute> allPredefinedRoutes = routeRepository.findAll();
+        List<FlightRoute> predefinedRoutes = routeRepository.findByDepartureAirportCode(departureAirport.code());
+        LOGGER.info("Recommendation diagnostics: predefinedRoutesTotal={} predefinedRoutesForDeparture={} departureAirport={} availableFlightTimeMinutes={} safetyMarginPercent={} usefulFlightTimeMinutes={}",
+                allPredefinedRoutes.size(),
+                predefinedRoutes.size(),
+                departureAirport.code(),
+                request.availableFlightTimeMinutes(),
+                request.effectiveSafetyMarginPercent(),
+                round(usefulFlightTimeMinutes));
+
+        List<FlightRoute> generatedRoutes = routeCandidateGenerator.generate(
                 departureAirport,
                 usefulFlightTimeMinutes,
                 cruiseSpeedKmh,
                 request.preference()
-        ).stream();
+        );
+        List<FlightRoute> routesForScoring = Stream.concat(predefinedRoutes.stream(), generatedRoutes.stream())
+                .toList();
+        LOGGER.info("Recommendation diagnostics: routesReachingScoring={} predefinedReachingScoring={} generatedReachingScoring={}",
+                routesForScoring.size(), predefinedRoutes.size(), generatedRoutes.size());
 
-        var viableRecommendations = Stream.concat(predefinedRoutes, generatedRoutes)
+        var scoredRecommendations = routesForScoring.stream()
                 .map(route -> toRecommendation(route, request, usefulFlightTimeMinutes, cruiseSpeedKmh, fuelBurnLitersPerHour))
+                .toList();
+        var usefulTimeViableRecommendations = scoredRecommendations.stream()
                 .filter(recommendation -> isWithinAllowedTime(recommendation, usefulFlightTimeMinutes))
+                .toList();
+        var viableRecommendations = usefulTimeViableRecommendations.stream()
                 .sorted(Comparator.comparingDouble(RecommendedRouteResponse::totalScore).reversed())
                 .limit(MAX_RECOMMENDATIONS)
                 .toList();
+        LOGGER.info("Recommendation diagnostics: scoredRecommendations={} discardedScoredRecommendationsByUsefulTime={} usefulTimeViableScoredRecommendations={} returnedRecommendations={}",
+                scoredRecommendations.size(),
+                scoredRecommendations.size() - usefulTimeViableRecommendations.size(),
+                usefulTimeViableRecommendations.size(),
+                viableRecommendations.size());
 
         return new RecommendationResponse(viableRecommendations, warnings(viableRecommendations));
     }
@@ -93,11 +119,11 @@ public class RecommendationService {
     }
 
     private List<String> warnings(List<RecommendedRouteResponse> recommendations) {
-        if (recommendations.size() >= MAX_RECOMMENDATIONS) {
+        if (recommendations.size() >= MIN_RECOMMENDATIONS) {
             return List.of();
         }
 
-        return List.of("Fewer than 3 routes fit within the available flight time plus 25% tolerance.");
+        return List.of("Fewer than 3 candidate routes fit within the available flight time plus 25% tolerance.");
     }
 
     private RecommendedRouteResponse toRecommendation(
