@@ -176,6 +176,10 @@
               <dd>{{ usefulFlightTimeMinutes() | number:'1.0-0' }} min</dd>
             </div>
             <div>
+              <dt>Categoria duracion</dt>
+              <dd>{{ route.routeDurationCategory }}</dd>
+            </div>
+            <div>
               <dt>Distancia</dt>
               <dd>{{ route.approximateDistanceKm | number:'1.0-0' }} km</dd>
             </div>
@@ -209,7 +213,7 @@
             </div>
             <div>
               <dt>Preferencia</dt>
-              <dd>{{ (route.scoreBreakdown.preferenceScore ?? 0) | number:'1.0-0' }}</dd>
+              <dd>{{ route.scoreBreakdown.preferenceScore | number:'1.0-0' }}</dd>
             </div>
             <div>
               <dt>Visual</dt>
@@ -286,6 +290,10 @@
               <dd>{{ usefulFlightTimeMinutes() | number:'1.0-0' }} min</dd>
             </div>
             <div>
+              <dt>Categoria duracion</dt>
+              <dd>{{ route.routeDurationCategory }}</dd>
+            </div>
+            <div>
               <dt>Distancia</dt>
               <dd>{{ route.approximateDistanceKm | number:'1.0-0' }} km</dd>
             </div>
@@ -317,7 +325,7 @@
             </div>
             <div>
               <dt>Preferencia</dt>
-              <dd>{{ (route.scoreBreakdown.preferenceScore ?? 0) | number:'1.0-0' }}</dd>
+              <dd>{{ route.scoreBreakdown.preferenceScore | number:'1.0-0' }}</dd>
             </div>
             <div>
               <dt>Visual</dt>

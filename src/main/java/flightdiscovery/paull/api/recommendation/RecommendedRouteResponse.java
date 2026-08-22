@@ -15,6 +15,7 @@ public record RecommendedRouteResponse(
         double approximateDistanceKm,
         double estimatedTimeMinutes,
         double estimatedTimeHours,
+        RouteDurationCategory routeDurationCategory,
         double estimatedFuelLiters,
         double fuelPricePerLiter,
         String fuelPriceSource,

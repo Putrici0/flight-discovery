@@ -24,7 +24,7 @@ class RouteCandidateGeneratorTest {
 
     @Test
     void generatesCircularRoutesWithOneVisualWaypoint() {
-        var routes = generator.generate(MockFlightData.GCLP, 120, 226.0, "coast");
+        var routes = generator.generate(MockFlightData.GCLP, 80, 226.0, "coast");
 
         assertTrue(routes.stream().anyMatch(route -> route.id().startsWith("generated-")));
         assertTrue(routes.stream().allMatch(route -> route.departureAirport().code().equals("GCLP")));
@@ -105,6 +105,40 @@ class RouteCandidateGeneratorTest {
                 .map(waypoint -> waypoint.name().toLowerCase())
                 .distinct()
                 .count()));
+    }
+
+    @Test
+    void doesNotGenerateThreeOrMoreWaypointRoutesWhenUsefulTimeIsBelowNinetyMinutes() {
+        var routes = generator.generate(MockFlightData.GCLP, 89, 226.0, "coast");
+
+        assertTrue(routes.stream()
+                .noneMatch(route -> route.routeType() == RouteType.GENERATED_THREE_OR_MORE_WAYPOINTS));
+    }
+
+    @Test
+    void generatesThreeOrMoreWaypointRoutesWhenUsefulTimeIsHighEnough() {
+        var routes = generator.generate(MockFlightData.GCLP, 180, 226.0, "coast");
+        var threeOrMoreWaypointRoute = routes.stream()
+                .filter(route -> route.routeType() == RouteType.GENERATED_THREE_OR_MORE_WAYPOINTS)
+                .findFirst()
+                .orElseThrow();
+
+        assertTrue(threeOrMoreWaypointRoute.id().startsWith("generated-three-plus-gclp-"));
+        assertTrue(threeOrMoreWaypointRoute.waypoints().size() >= 3);
+        assertEquals(
+                threeOrMoreWaypointRoute.waypoints().size(),
+                threeOrMoreWaypointRoute.waypoints().stream()
+                        .map(waypoint -> waypoint.name().toLowerCase())
+                        .distinct()
+                        .count()
+        );
+    }
+
+    @Test
+    void threeOrMoreWaypointGenerationCreatesAtMostFortyCandidatesBeforeTimeFiltering() {
+        var result = generator.generateWithDebug(MockFlightData.GCLP, 180, 226.0, "coast");
+
+        assertEquals(250, result.generatedCandidateRoutes());
     }
 
     @Test

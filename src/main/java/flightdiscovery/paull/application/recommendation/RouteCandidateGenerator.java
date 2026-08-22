@@ -23,6 +23,8 @@ public class RouteCandidateGenerator {
     private static final double MAX_ALLOWED_TIME_OVERRUN_RATIO = 1.25;
     private static final double TARGET_DURATION_RATIO = 0.85;
     private static final int MAX_GENERATED_ROUTES = 30;
+    private static final int MIN_TIME_FOR_THREE_OR_MORE_WAYPOINT_ROUTES = 90;
+    private static final int MAX_THREE_OR_MORE_WAYPOINT_CANDIDATES = 40;
     private static final double PREFERRED_ROUTE_RATIO = 0.80;
     private static final String TIME_DISCARD_REASON = "Estimated route time exceeds useful available time plus 25% tolerance";
     private static final String CANDIDATE_LIMIT_DISCARD_REASON = "Not selected after dynamic candidate preference and diversity limit";
@@ -63,6 +65,7 @@ public class RouteCandidateGenerator {
         List<FlightRoute> candidates = new ArrayList<>();
         candidates.addAll(singleWaypointRoutes(departureAirport, prioritizedWaypoints));
         candidates.addAll(twoWaypointRoutes(departureAirport, prioritizedWaypoints));
+        candidates.addAll(threeOrMoreWaypointRoutes(departureAirport, prioritizedWaypoints, availableTimeMinutes));
 
         List<RouteCandidateDiscard> discardedCandidates = new ArrayList<>();
         List<TimedRouteCandidate> timeViableCandidates = new ArrayList<>();
@@ -119,6 +122,32 @@ public class RouteCandidateGenerator {
         for (int i = 0; i < waypoints.size(); i++) {
             for (int j = i + 1; j < waypoints.size(); j++) {
                 routes.add(twoWaypointRoute(departureAirport, waypoints.get(i), waypoints.get(j)));
+            }
+        }
+
+        return routes;
+    }
+
+    private List<FlightRoute> threeOrMoreWaypointRoutes(
+            Airport departureAirport,
+            List<VisualWaypoint> waypoints,
+            double availableTimeMinutes
+    ) {
+        if (availableTimeMinutes < MIN_TIME_FOR_THREE_OR_MORE_WAYPOINT_ROUTES) {
+            return List.of();
+        }
+
+        List<FlightRoute> routes = new ArrayList<>();
+
+        for (int i = 0; i < waypoints.size(); i++) {
+            for (int j = i + 1; j < waypoints.size(); j++) {
+                for (int k = j + 1; k < waypoints.size(); k++) {
+                    routes.add(threeWaypointRoute(departureAirport, List.of(waypoints.get(i), waypoints.get(j), waypoints.get(k))));
+
+                    if (routes.size() >= MAX_THREE_OR_MORE_WAYPOINT_CANDIDATES) {
+                        return routes;
+                    }
+                }
             }
         }
 
@@ -189,6 +218,7 @@ public class RouteCandidateGenerator {
         ensureBand(variedRoutes, candidates, DurationBand.SHORT, preference, availableTimeMinutes);
         ensureRouteType(variedRoutes, candidates, RouteType.GENERATED_ONE_WAYPOINT, preference, availableTimeMinutes);
         ensureRouteType(variedRoutes, candidates, RouteType.GENERATED_TWO_WAYPOINTS, preference, availableTimeMinutes);
+        ensureRouteType(variedRoutes, candidates, RouteType.GENERATED_THREE_OR_MORE_WAYPOINTS, preference, availableTimeMinutes);
 
         return variedRoutes;
     }
@@ -322,6 +352,39 @@ public class RouteCandidateGenerator {
         );
     }
 
+    private FlightRoute threeWaypointRoute(Airport departureAirport, List<VisualWaypoint> waypoints) {
+        List<String> tags = StreamUtils.distinctTags(waypoints);
+        double scenicScore = waypoints.stream()
+                .mapToDouble(VisualWaypoint::scenicValue)
+                .average()
+                .orElse(0.0);
+        String waypointIds = waypoints.stream()
+                .map(VisualWaypoint::id)
+                .reduce((first, second) -> first + "-" + second)
+                .orElse("route");
+        String waypointNames = waypoints.stream()
+                .map(VisualWaypoint::name)
+                .reduce((first, second) -> first + ", " + second)
+                .orElse("");
+
+        return new FlightRoute(
+                "generated-three-plus-" + departureAirport.code().toLowerCase() + "-" + waypointIds,
+                "Circular larga a " + waypointNames,
+                "Ruta circular generada desde " + departureAirport.code()
+                        + " hacia " + waypointNames + " y regreso al aeropuerto de salida.",
+                RouteType.GENERATED_THREE_OR_MORE_WAYPOINTS,
+                departureAirport,
+                waypoints.stream()
+                        .map(waypoint -> new Waypoint(waypoint.name(), waypoint.latitude(), waypoint.longitude()))
+                        .toList(),
+                tags,
+                0.0,
+                0.0,
+                scenicScore
+        );
+    }
+
+
     private boolean fitsAvailableTime(FlightRoute route, double availableTimeMinutes, double cruiseSpeedKmh) {
         return estimatedTimeMinutes(route, cruiseSpeedKmh) <= availableTimeMinutes * MAX_ALLOWED_TIME_OVERRUN_RATIO;
     }
@@ -454,6 +517,16 @@ public class RouteCandidateGenerator {
         private static List<String> distinctTags(List<String> firstTags, List<String> secondTags) {
             List<String> tags = new ArrayList<>(firstTags);
             secondTags.stream()
+                    .filter(tag -> !tags.contains(tag))
+                    .forEach(tags::add);
+
+            return tags;
+        }
+
+        private static List<String> distinctTags(List<VisualWaypoint> waypoints) {
+            List<String> tags = new ArrayList<>();
+            waypoints.stream()
+                    .flatMap(waypoint -> waypoint.tags().stream())
                     .filter(tag -> !tags.contains(tag))
                     .forEach(tags::add);
 

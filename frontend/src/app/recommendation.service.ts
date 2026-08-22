@@ -19,7 +19,18 @@ export interface Waypoint {
   longitude: number;
 }
 
-export type RouteType = 'PREDEFINED' | 'GENERATED_ONE_WAYPOINT' | 'GENERATED_TWO_WAYPOINTS';
+export type RouteType =
+  | 'PREDEFINED'
+  | 'GENERATED_ONE_WAYPOINT'
+  | 'GENERATED_TWO_WAYPOINTS'
+  | 'GENERATED_THREE_OR_MORE_WAYPOINTS';
+export type RouteDurationCategory =
+  | 'TOO_SHORT'
+  | 'SHORT'
+  | 'GOOD_FIT'
+  | 'LONG'
+  | 'SLIGHTLY_OVER_TIME'
+  | 'TOO_LONG';
 
 export interface RecommendedRoute {
   id: string;
@@ -30,6 +41,7 @@ export interface RecommendedRoute {
   approximateDistanceKm: number;
   estimatedTimeMinutes: number;
   estimatedTimeHours: number;
+  routeDurationCategory: RouteDurationCategory;
   estimatedFuelLiters: number;
   fuelPricePerLiter: number;
   fuelPriceSource: 'MANUAL' | 'MOCK';
@@ -43,7 +55,7 @@ export interface RecommendedRoute {
   scoreBreakdown: {
     weatherScore: number;
     timeFitScore: number;
-    preferenceScore?: number;
+    preferenceScore: number;
     scenicScore: number;
     costScore: number;
     totalScore: number;

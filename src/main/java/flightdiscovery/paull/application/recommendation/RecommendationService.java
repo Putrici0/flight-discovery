@@ -20,6 +20,7 @@ import flightdiscovery.paull.api.recommendation.RecommendationDebugInfo;
 import flightdiscovery.paull.api.recommendation.RecommendationDevelopmentDebugResponse;
 import flightdiscovery.paull.api.recommendation.RecommendationRouteDiscardDebug;
 import flightdiscovery.paull.api.recommendation.RecommendedRouteResponse;
+import flightdiscovery.paull.api.recommendation.RouteDurationCategory;
 import flightdiscovery.paull.domain.calculation.RouteCalculationService;
 import flightdiscovery.paull.domain.model.Aircraft;
 import flightdiscovery.paull.domain.model.Airport;
@@ -44,6 +45,7 @@ public class RecommendationService {
     private static final double MAX_ALLOWED_TIME_OVERRUN_RATIO = 1.25;
     private static final double LOW_TIME_MARGIN_RATIO = 0.90;
     private static final double HIGH_COST_THRESHOLD_EUR = 150.0;
+    private static final double HIGH_SHORT_ROUTE_SCORE = 85.0;
     private static final String TIME_DISCARD_REASON = "Estimated route time exceeds useful available time plus 25% tolerance";
     private static final String FINAL_SELECTION_DISCARD_REASON = "Not selected after score and diversity recommendation limit";
 
@@ -119,7 +121,7 @@ public class RecommendationService {
         var usefulTimeViableRoutes = scoredRoutes.stream()
                 .filter(scoredRoute -> isWithinAllowedTime(scoredRoute.recommendation(), usefulAvailableTimeMinutes))
                 .toList();
-        var viableRecommendations = diverseRecommendations(usefulTimeViableRoutes).stream()
+        var viableRecommendations = diverseRecommendations(usefulTimeViableRoutes, request.preference()).stream()
                 .map(ScoredRoute::recommendation)
                 .toList();
         LOGGER.info("Recommendation diagnostics: scoredRecommendations={} discardedScoredRecommendationsByUsefulTime={} usefulTimeViableScoredRecommendations={} returnedRecommendations={}",
@@ -165,7 +167,7 @@ public class RecommendationService {
         var usefulTimeViableRoutes = scoredRoutes.stream()
                 .filter(scoredRoute -> isWithinAllowedTime(scoredRoute.recommendation(), usefulAvailableTimeMinutes))
                 .toList();
-        var viableRecommendations = diverseRecommendations(usefulTimeViableRoutes).stream()
+        var viableRecommendations = diverseRecommendations(usefulTimeViableRoutes, request.preference()).stream()
                 .map(ScoredRoute::recommendation)
                 .toList();
         List<RecommendationRouteDiscardDebug> discards = new ArrayList<>();
@@ -282,20 +284,82 @@ public class RecommendationService {
         );
     }
 
-    private List<ScoredRoute> diverseRecommendations(List<ScoredRoute> scoredRoutes) {
-        List<ScoredRoute> sortedRoutes = scoredRoutes.stream()
-                .sorted(Comparator.comparingDouble((ScoredRoute scoredRoute) -> scoredRoute.recommendation().totalScore()).reversed())
-                .toList();
+    private List<ScoredRoute> diverseRecommendations(List<ScoredRoute> scoredRoutes, String preference) {
+        List<ScoredRoute> sortedRoutes = sortedBySelection(scoredRoutes, preference);
         List<ScoredRoute> selectedRoutes = new ArrayList<>();
         Set<String> waypointSignatures = new HashSet<>();
+        boolean shortPreference = isShortPreference(preference);
 
-        addDiverseRoutes(sortedRoutes, selectedRoutes, waypointSignatures, true, true);
-        addDiverseRoutes(sortedRoutes, selectedRoutes, waypointSignatures, true, false);
-        addDiverseRoutes(sortedRoutes, selectedRoutes, waypointSignatures, false, false);
+        List<ScoredRoute> goodFitRoutes = sortedRoutes.stream()
+                .filter(scoredRoute -> routeDurationCategory(scoredRoute) == RouteDurationCategory.GOOD_FIT)
+                .toList();
+        addDiverseRoutes(goodFitRoutes, selectedRoutes, waypointSignatures, false, false, Math.min(2, goodFitRoutes.size()));
+
+        List<ScoredRoute> preferredDurationRoutes = sortedRoutes.stream()
+                .filter(scoredRoute -> routeDurationCategory(scoredRoute) == RouteDurationCategory.GOOD_FIT
+                        || routeDurationCategory(scoredRoute) == RouteDurationCategory.LONG
+                        || routeDurationCategory(scoredRoute) == RouteDurationCategory.SLIGHTLY_OVER_TIME
+                        || (routeDurationCategory(scoredRoute) == RouteDurationCategory.SHORT && isHighScoringShortRoute(scoredRoute))
+                        || (shortPreference && routeDurationCategory(scoredRoute) == RouteDurationCategory.TOO_SHORT))
+                .toList();
+        addDiverseRoutes(preferredDurationRoutes, selectedRoutes, waypointSignatures, true, true, MAX_RECOMMENDATIONS);
+        addDiverseRoutes(preferredDurationRoutes, selectedRoutes, waypointSignatures, true, false, MAX_RECOMMENDATIONS);
+        addDiverseRoutes(preferredDurationRoutes, selectedRoutes, waypointSignatures, false, false, MAX_RECOMMENDATIONS);
+
+        List<ScoredRoute> shortRoutes = sortedRoutes.stream()
+                .filter(scoredRoute -> routeDurationCategory(scoredRoute) == RouteDurationCategory.SHORT)
+                .toList();
+        addDiverseRoutes(shortRoutes, selectedRoutes, waypointSignatures, false, false, MAX_RECOMMENDATIONS);
+
+        boolean hasNonTooShortAlternative = sortedRoutes.stream()
+                .anyMatch(scoredRoute -> routeDurationCategory(scoredRoute) != RouteDurationCategory.TOO_SHORT
+                        && selectedRoutes.stream().noneMatch(selectedRoute -> selectedRoute.route().id().equals(scoredRoute.route().id())));
+        if (shortPreference || !hasNonTooShortAlternative) {
+            List<ScoredRoute> tooShortRoutes = sortedRoutes.stream()
+                    .filter(scoredRoute -> routeDurationCategory(scoredRoute) == RouteDurationCategory.TOO_SHORT)
+                    .toList();
+            addDiverseRoutes(tooShortRoutes, selectedRoutes, waypointSignatures, false, false, MAX_RECOMMENDATIONS);
+        }
 
         return selectedRoutes.stream()
-                .sorted(Comparator.comparingDouble((ScoredRoute scoredRoute) -> scoredRoute.recommendation().totalScore()).reversed())
+                .sorted(selectionComparator(preference))
                 .toList();
+    }
+
+    private List<ScoredRoute> sortedBySelection(List<ScoredRoute> scoredRoutes, String preference) {
+        return scoredRoutes.stream()
+                .sorted(selectionComparator(preference))
+                .toList();
+    }
+
+    private Comparator<ScoredRoute> selectionComparator(String preference) {
+        return Comparator
+                .comparingInt((ScoredRoute scoredRoute) -> durationSelectionPriority(scoredRoute, preference))
+                .thenComparing(Comparator.comparing(
+                        (ScoredRoute scoredRoute) -> routeMatchesPreference(scoredRoute.route(), preference)
+                ).reversed())
+                .thenComparing(Comparator.comparingDouble(
+                        (ScoredRoute scoredRoute) -> scoredRoute.recommendation().totalScore()
+                ).reversed());
+    }
+
+    private int durationSelectionPriority(ScoredRoute scoredRoute, String preference) {
+        return switch (routeDurationCategory(scoredRoute)) {
+            case GOOD_FIT -> 0;
+            case LONG -> 1;
+            case SLIGHTLY_OVER_TIME -> 2;
+            case SHORT -> isHighScoringShortRoute(scoredRoute) ? 2 : 3;
+            case TOO_SHORT -> isShortPreference(preference) ? 1 : 4;
+            case TOO_LONG -> 5;
+        };
+    }
+
+    private RouteDurationCategory routeDurationCategory(ScoredRoute scoredRoute) {
+        return scoredRoute.recommendation().routeDurationCategory();
+    }
+
+    private boolean isHighScoringShortRoute(ScoredRoute scoredRoute) {
+        return scoredRoute.recommendation().totalScore() >= HIGH_SHORT_ROUTE_SCORE;
     }
 
     private void addDiverseRoutes(
@@ -303,10 +367,11 @@ public class RecommendationService {
             List<ScoredRoute> selectedRoutes,
             Set<String> waypointSignatures,
             boolean requireNewRouteType,
-            boolean requireNewPrimaryTag
+            boolean requireNewPrimaryTag,
+            int targetSize
     ) {
         for (ScoredRoute candidate : sortedRoutes) {
-            if (selectedRoutes.size() >= MAX_RECOMMENDATIONS) {
+            if (selectedRoutes.size() >= targetSize || selectedRoutes.size() >= MAX_RECOMMENDATIONS) {
                 return;
             }
 
@@ -404,6 +469,7 @@ public class RecommendationService {
                 round(approximateDistanceKm),
                 round(estimatedTimeMinutes),
                 round(estimatedTimeHours),
+                routeDurationCategory(estimatedTimeMinutes, usefulFlightTimeMinutes),
                 roundOneDecimal(estimatedFuelLiters),
                 fuelPrice.pricePerLiter(),
                 fuelPrice.source().name(),
@@ -418,6 +484,36 @@ public class RecommendationService {
                 explanation(route, request, usefulFlightTimeMinutes, estimatedTimeMinutes, estimatedFuelLiters, estimatedCost, score, weatherData),
                 routeWarnings(estimatedTimeMinutes, usefulFlightTimeMinutes, estimatedCost)
         );
+    }
+
+    private RouteDurationCategory routeDurationCategory(double estimatedTimeMinutes, double usefulAvailableTimeMinutes) {
+        if (usefulAvailableTimeMinutes <= 0.0) {
+            return RouteDurationCategory.TOO_LONG;
+        }
+
+        double usageRatio = estimatedTimeMinutes / usefulAvailableTimeMinutes;
+
+        if (usageRatio < 0.4) {
+            return RouteDurationCategory.TOO_SHORT;
+        }
+
+        if (usageRatio < 0.7) {
+            return RouteDurationCategory.SHORT;
+        }
+
+        if (usageRatio < LOW_TIME_MARGIN_RATIO) {
+            return RouteDurationCategory.GOOD_FIT;
+        }
+
+        if (usageRatio <= 1.0) {
+            return RouteDurationCategory.LONG;
+        }
+
+        if (usageRatio <= MAX_ALLOWED_TIME_OVERRUN_RATIO) {
+            return RouteDurationCategory.SLIGHTLY_OVER_TIME;
+        }
+
+        return RouteDurationCategory.TOO_LONG;
     }
 
     private List<String> routeWarnings(double estimatedTimeMinutes, double availableTimeMinutes, double estimatedCost) {
@@ -517,6 +613,10 @@ public class RecommendationService {
 
         return route.tags().stream()
                 .anyMatch(tag -> tag.equalsIgnoreCase(preference.trim()));
+    }
+
+    private boolean isShortPreference(String preference) {
+        return preference != null && preference.trim().equalsIgnoreCase("short");
     }
 
     private String timeFitText(double estimatedTimeMinutes, double availableTimeMinutes) {

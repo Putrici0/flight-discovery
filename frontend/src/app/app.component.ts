@@ -113,6 +113,7 @@ export class AppComponent implements AfterViewInit, OnDestroy {
   protected readonly airports = AIRPORT_OPTIONS;
   protected readonly aircraftOptions = AIRCRAFT_OPTIONS;
   protected readonly preferences = [
+    { value: 'any', label: 'Cualquiera' },
     { value: 'coast', label: 'Costa' },
     { value: 'mountain', label: 'Montana' },
     { value: 'short', label: 'Corta' },
@@ -209,6 +210,8 @@ export class AppComponent implements AfterViewInit, OnDestroy {
         return 'Generada - 1 waypoint';
       case 'GENERATED_TWO_WAYPOINTS':
         return 'Generada - 2 waypoints';
+      case 'GENERATED_THREE_OR_MORE_WAYPOINTS':
+        return 'Generada - 3+ waypoints';
       default:
         return 'Manual';
     }

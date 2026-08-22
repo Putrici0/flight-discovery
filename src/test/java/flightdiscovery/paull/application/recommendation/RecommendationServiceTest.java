@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import flightdiscovery.paull.api.recommendation.RecommendationRequest;
 import flightdiscovery.paull.api.recommendation.RecommendedRouteResponse;
+import flightdiscovery.paull.api.recommendation.RouteDurationCategory;
 import flightdiscovery.paull.domain.calculation.RouteCalculationService;
 import flightdiscovery.paull.domain.model.RouteType;
 import flightdiscovery.paull.domain.repository.MockAircraftRepository;
@@ -48,11 +49,23 @@ class RecommendationServiceTest {
     }
 
     @Test
-    void returnsRecommendationsOrderedByTotalScore() {
-        var recommendations = recommendationService.recommend(requestWithAvailableTime(120)).recommendations();
+    void prioritizesGoodFitRecommendationsWhenAvailable() {
+        var request = requestWithAvailableTime(120);
+        var response = recommendationService.recommend(request);
+        var debug = recommendationService.debug(request);
+        var recommendations = response.recommendations();
+        long availableGoodFitCandidates = debug.candidates().stream()
+                .filter(candidate -> candidate.totalScore() != null)
+                .filter(candidate -> durationCategory(candidate.estimatedTimeMinutes(), debug.usefulAvailableTimeMinutes())
+                        == RouteDurationCategory.GOOD_FIT)
+                .count();
+        long goodFitRecommendations = recommendations.stream()
+                .filter(recommendation -> recommendation.routeDurationCategory() == RouteDurationCategory.GOOD_FIT)
+                .count();
 
-        for (int i = 1; i < recommendations.size(); i++) {
-            assertTrue(recommendations.get(i - 1).totalScore() >= recommendations.get(i).totalScore());
+        if (availableGoodFitCandidates > 0) {
+            assertEquals(RouteDurationCategory.GOOD_FIT, recommendations.getFirst().routeDurationCategory());
+            assertTrue(goodFitRecommendations >= Math.min(2, availableGoodFitCandidates));
         }
     }
 
@@ -114,14 +127,15 @@ class RecommendationServiceTest {
     }
 
     @Test
-    void userPreferenceInfluencesRecommendationRanking() {
-        var coastRecommendations = recommendationService.recommend(requestWithPreference("coast")).recommendations();
-        var mountainRecommendations = recommendationService.recommend(requestWithPreference("mountain")).recommendations();
+    void shortPreferenceCanChangeRecommendationDurationCategories() {
+        var coastCategories = recommendationService.recommend(requestWithPreference("coast")).recommendations().stream()
+                .map(RecommendedRouteResponse::routeDurationCategory)
+                .toList();
+        var shortCategories = recommendationService.recommend(requestWithPreference("short")).recommendations().stream()
+                .map(RecommendedRouteResponse::routeDurationCategory)
+                .toList();
 
-        assertNotEquals(
-                coastRecommendations.stream().map(RecommendedRouteResponse::id).toList(),
-                mountainRecommendations.stream().map(RecommendedRouteResponse::id).toList()
-        );
+        assertNotEquals(coastCategories, shortCategories);
     }
 
     @Test
@@ -141,6 +155,22 @@ class RecommendationServiceTest {
 
         assertTrue(recommendation.explanation().contains("aprovecha "));
         assertTrue(recommendation.explanation().contains("el tiempo disponible"));
+    }
+
+    @Test
+    void avoidsTooShortRoutesWhenPreferenceIsNotShortAndAlternativesExist() {
+        var recommendations = recommendationService.recommend(requestWithSafetyMargin(120, 15)).recommendations();
+
+        assertTrue(recommendations.stream()
+                .noneMatch(recommendation -> recommendation.routeDurationCategory() == RouteDurationCategory.TOO_SHORT));
+    }
+
+    @Test
+    void allowsTooShortRoutesWhenPreferenceIsShort() {
+        var recommendations = recommendationService.recommend(requestWithPreference("short")).recommendations();
+
+        assertTrue(recommendations.stream()
+                .anyMatch(recommendation -> recommendation.routeDurationCategory() == RouteDurationCategory.TOO_SHORT));
     }
 
     @Test
@@ -229,14 +259,10 @@ class RecommendationServiceTest {
     }
 
     @Test
-    void routeWarningsMentionLowTimeMargin() {
-        var recommendations = recommendationService.recommend(requestWithAvailableTime(62))
-                .recommendations()
-                .stream()
-                .filter(recommendation -> recommendation.warnings().contains("Esta ruta deja poco margen de tiempo"))
-                .toList();
+    void keepsMaximumFiveRecommendationsAfterDurationSelection() {
+        var recommendations = recommendationService.recommend(requestWithAvailableTime(120)).recommendations();
 
-        assertTrue(recommendations.size() > 0);
+        assertTrue(recommendations.size() <= 5);
     }
 
     @Test
@@ -330,6 +356,15 @@ class RecommendationServiceTest {
     }
 
     @Test
+    void includesThreeOrMoreWaypointGeneratedRoutesWhenUsefulTimeIsHighEnough() {
+        var recommendations = recommendationService.recommend(requestWithAvailableTime(180)).recommendations();
+
+        assertTrue(recommendations.stream()
+                .anyMatch(recommendation -> recommendation.routeType() == RouteType.GENERATED_THREE_OR_MORE_WAYPOINTS
+                        && recommendation.waypoints().size() >= 3));
+    }
+
+    @Test
     void doesNotReturnRoutesWithExactlySameWaypoints() {
         var recommendations = recommendationService.recommend(requestWithAvailableTime(120)).recommendations();
         var waypointSignatures = recommendations.stream()
@@ -344,17 +379,15 @@ class RecommendationServiceTest {
     }
 
     @Test
-    void mixesRouteTypesWhenGoodAlternativesExist() {
-        var routeTypes = recommendationService.recommend(requestWithAvailableTime(120))
+    void finalSelectionDoesNotReturnOnlyVeryShortRoutesWhenAlternativesExist() {
+        var categories = recommendationService.recommend(requestWithAvailableTime(120))
                 .recommendations()
                 .stream()
-                .map(RecommendedRouteResponse::routeType)
+                .map(RecommendedRouteResponse::routeDurationCategory)
                 .distinct()
                 .toList();
 
-        assertTrue(routeTypes.contains(RouteType.PREDEFINED));
-        assertTrue(routeTypes.contains(RouteType.GENERATED_ONE_WAYPOINT));
-        assertTrue(routeTypes.contains(RouteType.GENERATED_TWO_WAYPOINTS));
+        assertFalse(categories.size() == 1 && categories.contains(RouteDurationCategory.TOO_SHORT));
     }
 
     @Test
@@ -506,5 +539,31 @@ class RecommendationServiceTest {
     private void assertScoreInRange(double score) {
         assertTrue(score >= 0.0);
         assertTrue(score <= 100.0);
+    }
+
+    private RouteDurationCategory durationCategory(double estimatedTimeMinutes, double usefulAvailableTimeMinutes) {
+        double usageRatio = estimatedTimeMinutes / usefulAvailableTimeMinutes;
+
+        if (usageRatio < 0.4) {
+            return RouteDurationCategory.TOO_SHORT;
+        }
+
+        if (usageRatio < 0.7) {
+            return RouteDurationCategory.SHORT;
+        }
+
+        if (usageRatio < 0.9) {
+            return RouteDurationCategory.GOOD_FIT;
+        }
+
+        if (usageRatio <= 1.0) {
+            return RouteDurationCategory.LONG;
+        }
+
+        if (usageRatio <= 1.25) {
+            return RouteDurationCategory.SLIGHTLY_OVER_TIME;
+        }
+
+        return RouteDurationCategory.TOO_LONG;
     }
 }

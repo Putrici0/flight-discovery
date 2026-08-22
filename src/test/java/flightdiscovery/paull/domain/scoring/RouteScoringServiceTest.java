@@ -27,7 +27,7 @@ class RouteScoringServiceTest {
         assertEquals(100.0, score.preferenceScore(), 0.01);
         assertEquals(80.0, score.scenicScore(), 0.01);
         assertEquals(60.0, score.costScore(), 0.01);
-        assertEquals(86.0, score.totalScore(), 0.01);
+        assertEquals(84.5, score.totalScore(), 0.01);
     }
 
     @Test
@@ -114,7 +114,34 @@ class RouteScoringServiceTest {
         FlightRoute nonMatchingRoute = routeWithScenicScoreAndTags(8.0, List.of("mountain"));
 
         assertEquals(100.0, scoringService.preferenceScore(matchingRoute, "coast"), 0.01);
-        assertEquals(45.0, scoringService.preferenceScore(nonMatchingRoute, "coast"), 0.01);
+        assertEquals(35.0, scoringService.preferenceScore(nonMatchingRoute, "coast"), 0.01);
+    }
+
+    @Test
+    void givesMediumPreferenceScoreForPartialMatches() {
+        FlightRoute route = routeWithScenicScoreAndTags(8.0, List.of("coastal", "short"));
+
+        assertEquals(70.0, scoringService.preferenceScore(route, "coast"), 0.01);
+        assertEquals(70.0, scoringService.preferenceScore(route, "coastal route"), 0.01);
+    }
+
+    @Test
+    void givesNeutralPreferenceScoreWhenPreferenceIsBlankOrAny() {
+        FlightRoute route = routeWithScenicScoreAndTags(8.0, List.of("coast"));
+
+        assertEquals(60.0, scoringService.preferenceScore(route, null), 0.01);
+        assertEquals(60.0, scoringService.preferenceScore(route, ""), 0.01);
+        assertEquals(60.0, scoringService.preferenceScore(route, "any"), 0.01);
+    }
+
+    @Test
+    void preferenceScoreAlwaysStaysBetweenZeroAndOneHundred() {
+        FlightRoute route = routeWithScenicScoreAndTags(8.0, List.of("coast"));
+
+        assertScoreInRange(scoringService.preferenceScore(route, "coast"));
+        assertScoreInRange(scoringService.preferenceScore(route, "coastal route"));
+        assertScoreInRange(scoringService.preferenceScore(route, "mountain"));
+        assertScoreInRange(scoringService.preferenceScore(route, "any"));
     }
 
     @Test

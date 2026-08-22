@@ -23,10 +23,10 @@ public class RouteScoringService {
         double preferenceScore = preferenceScore(route, preference);
         double scenicScore = scenicScore(route);
         double costScore = costScore(estimatedCost);
-        double totalScore = clampScore(normalizedWeatherScore * 0.20
-                + timeFitScore * 0.30
-                + preferenceScore * 0.20
+        double totalScore = clampScore(normalizedWeatherScore * 0.25
+                + timeFitScore * 0.35
                 + scenicScore * 0.25
+                + preferenceScore * 0.10
                 + costScore * 0.05);
 
         return new RouteScore(
@@ -100,14 +100,22 @@ public class RouteScoringService {
     }
 
     public double preferenceScore(FlightRoute route, String preference) {
-        if (preference == null || preference.isBlank()) {
+        if (preference == null || preference.isBlank() || preference.trim().equalsIgnoreCase("any")) {
             return 60.0;
         }
 
-        boolean matchesPreference = route.tags().stream()
-                .anyMatch(tag -> tag.equalsIgnoreCase(preference.trim()));
+        String normalizedPreference = preference.trim().toLowerCase();
+        boolean exactMatch = route.tags().stream()
+                .anyMatch(tag -> tag.equalsIgnoreCase(normalizedPreference));
+        if (exactMatch) {
+            return 100.0;
+        }
 
-        return matchesPreference ? 100.0 : 45.0;
+        boolean partialMatch = route.tags().stream()
+                .map(tag -> tag.trim().toLowerCase())
+                .anyMatch(tag -> tag.contains(normalizedPreference) || normalizedPreference.contains(tag));
+
+        return partialMatch ? 70.0 : 35.0;
     }
 
     private double round(double value) {
