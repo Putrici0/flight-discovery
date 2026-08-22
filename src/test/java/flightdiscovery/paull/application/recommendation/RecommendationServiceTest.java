@@ -153,6 +153,34 @@ class RecommendationServiceTest {
     }
 
     @Test
+    void usesAircraftDefaultsWhenAircraftIdIsProvided() {
+        var cessnaDefaults = recommendationService.recommend(requestWithAircraftDefaults("cessna-172")).recommendations();
+        var explicitCessnaValues = recommendationService.recommend(requestWithAircraftValues("cessna-172", 226.0, 34.0)).recommendations();
+        var routePair = firstCommonRoutePair(cessnaDefaults, explicitCessnaValues);
+
+        assertEquals(routePair.second().estimatedTimeMinutes(), routePair.first().estimatedTimeMinutes(), 0.01);
+        assertEquals(routePair.second().estimatedFuelLiters(), routePair.first().estimatedFuelLiters(), 0.01);
+    }
+
+    @Test
+    void manualCruiseSpeedOverridesAircraftCruiseSpeed() {
+        var aircraftDefaultRoutes = recommendationService.recommend(requestWithAircraftDefaults("diamond-da40")).recommendations();
+        var manualSpeedRoutes = recommendationService.recommend(requestWithAircraftValues("diamond-da40", 226.0, null)).recommendations();
+        var routePair = firstCommonRoutePair(aircraftDefaultRoutes, manualSpeedRoutes);
+
+        assertTrue(routePair.second().estimatedTimeMinutes() > routePair.first().estimatedTimeMinutes());
+    }
+
+    @Test
+    void manualFuelBurnOverridesAircraftFuelBurn() {
+        var aircraftDefaultRoutes = recommendationService.recommend(requestWithAircraftDefaults("diamond-da40")).recommendations();
+        var manualFuelBurnRoutes = recommendationService.recommend(requestWithAircraftValues("diamond-da40", null, 40.0)).recommendations();
+        var routePair = firstCommonRoutePair(aircraftDefaultRoutes, manualFuelBurnRoutes);
+
+        assertTrue(routePair.second().estimatedFuelLiters() > routePair.first().estimatedFuelLiters());
+    }
+
+    @Test
     void routeWarningsAlwaysMentionSimulatedWeather() {
         var recommendation = recommendationService.recommend(requestWithAvailableTime(120))
                 .recommendations()
@@ -229,8 +257,28 @@ class RecommendationServiceTest {
     }
 
     @Test
+    void usesMockFuelPriceFromAircraftFuelTypeWhenManualPriceIsOmitted() {
+        var recommendation = recommendationService.recommend(requestWithoutFuelPrice("diamond-da40"))
+                .recommendations()
+                .getFirst();
+
+        assertEquals(1.95, recommendation.fuelPricePerLiter(), 0.01);
+        assertEquals("MOCK", recommendation.fuelPriceSource());
+    }
+
+    @Test
     void usesManualFuelPriceWhenProvided() {
         var recommendation = recommendationService.recommend(requestWithFuelPrice(3.2))
+                .recommendations()
+                .getFirst();
+
+        assertEquals(3.2, recommendation.fuelPricePerLiter(), 0.01);
+        assertEquals("MANUAL", recommendation.fuelPriceSource());
+    }
+
+    @Test
+    void manualFuelPriceOverridesMockFuelPrice() {
+        var recommendation = recommendationService.recommend(requestWithFuelPrice("diamond-da40", 3.2))
                 .recommendations()
                 .getFirst();
 
@@ -369,13 +417,43 @@ class RecommendationServiceTest {
     }
 
     private RecommendationRequest requestWithoutFuelPrice() {
+        return requestWithoutFuelPrice("cessna-172");
+    }
+
+    private RecommendationRequest requestWithoutFuelPrice(String aircraftId) {
         return new RecommendationRequest(
                 "GCLP",
                 120,
-                "cessna-172",
-                226.0,
-                34.0,
+                aircraftId,
                 null,
+                null,
+                null,
+                "coast",
+                0
+        );
+    }
+
+    private RecommendationRequest requestWithFuelPrice(String aircraftId, double fuelPricePerLiter) {
+        return new RecommendationRequest(
+                "GCLP",
+                120,
+                aircraftId,
+                null,
+                null,
+                fuelPricePerLiter,
+                "coast",
+                0
+        );
+    }
+
+    private RecommendationRequest requestWithAircraftValues(String aircraftId, Double cruiseSpeedKmh, Double fuelBurnLitersPerHour) {
+        return new RecommendationRequest(
+                "GCLP",
+                120,
+                aircraftId,
+                cruiseSpeedKmh,
+                fuelBurnLitersPerHour,
+                2.3,
                 "coast",
                 0
         );

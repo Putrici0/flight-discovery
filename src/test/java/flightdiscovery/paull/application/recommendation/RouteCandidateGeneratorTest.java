@@ -4,10 +4,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.List;
+
 import org.junit.jupiter.api.Test;
 
 import flightdiscovery.paull.domain.calculation.RouteCalculationService;
 import flightdiscovery.paull.domain.mock.MockFlightData;
+import flightdiscovery.paull.domain.model.FlightRoute;
 import flightdiscovery.paull.domain.model.RouteType;
 import flightdiscovery.paull.domain.repository.MockWaypointRepository;
 
@@ -92,6 +95,16 @@ class RouteCandidateGeneratorTest {
         assertEquals(twoWaypointRoutes.size(), twoWaypointRoutes.stream().map(route -> route.id()).distinct().count());
         assertTrue(twoWaypointRoutes.stream().allMatch(route -> route.id().startsWith("generated-two-gclp-")));
         assertTrue(twoWaypointRoutes.stream().allMatch(route -> !route.waypoints().get(0).name().equals(route.waypoints().get(1).name())));
+    }
+
+    @Test
+    void generatedRoutesNeverRepeatWaypointsWithinSameRoute() {
+        var routes = generator.generate(MockFlightData.GCLP, 480, 226.0, "coast");
+
+        assertTrue(routes.stream().allMatch(route -> route.waypoints().size() == route.waypoints().stream()
+                .map(waypoint -> waypoint.name().toLowerCase())
+                .distinct()
+                .count()));
     }
 
     @Test
@@ -188,5 +201,70 @@ class RouteCandidateGeneratorTest {
         var route = generator.generate(MockFlightData.GCLP, 120, 226.0, "mountain").getFirst();
 
         assertTrue(route.tags().contains("mountain"));
+    }
+
+    @Test
+    void coastPreferencePrioritizesCoastalWaypointsBeforeAlternatives() {
+        var routes = generator.generate(MockFlightData.GCLP, 480, 226.0, "coast");
+
+        assertTrue(routes.subList(0, Math.min(20, routes.size())).stream()
+                .allMatch(route -> route.tags().contains("coast")));
+    }
+
+    @Test
+    void reservesMostGeneratedCandidatesForCoastPreferenceButKeepsAlternatives() {
+        var routes = generator.generate(MockFlightData.GCLP, 480, 226.0, "coast");
+        long coastRoutes = routes.stream()
+                .filter(route -> route.tags().contains("coast"))
+                .count();
+
+        assertTrue(coastRoutes > routes.size() / 2);
+        assertTrue(coastRoutes < routes.size());
+    }
+
+    @Test
+    void reservesMostGeneratedCandidatesForMountainPreferenceButKeepsAlternatives() {
+        var routes = generator.generate(MockFlightData.GCLP, 480, 226.0, "mountain");
+        long mountainRoutes = routes.stream()
+                .filter(route -> route.tags().contains("mountain"))
+                .count();
+
+        assertTrue(mountainRoutes > routes.size() / 2);
+        assertTrue(mountainRoutes < routes.size());
+    }
+
+    @Test
+    void shortAvailableTimeGeneratesShorterRoutesThanLongAvailableTime() {
+        var shortTimeRoutes = generator.generate(MockFlightData.GCLP, 20, 226.0, "coast");
+        var longTimeRoutes = generator.generate(MockFlightData.GCLP, 180, 226.0, "coast");
+        double longestShortRouteMinutes = longestEstimatedTimeMinutes(shortTimeRoutes);
+        double longestLongRouteMinutes = longestEstimatedTimeMinutes(longTimeRoutes);
+
+        assertTrue(longestShortRouteMinutes < longestLongRouteMinutes);
+    }
+
+    @Test
+    void longerAvailableTimeAllowsRoutesThatDoNotFitShortAvailableTime() {
+        var shortTimeRoutes = generator.generate(MockFlightData.GCLP, 20, 226.0, "coast");
+        var longTimeRoutes = generator.generate(MockFlightData.GCLP, 180, 226.0, "coast");
+        double longestShortRouteMinutes = longestEstimatedTimeMinutes(shortTimeRoutes);
+
+        assertTrue(longTimeRoutes.stream()
+                .mapToDouble(route -> estimatedTimeMinutes(route, 226.0))
+                .anyMatch(estimatedTimeMinutes -> estimatedTimeMinutes > longestShortRouteMinutes));
+    }
+
+    private double longestEstimatedTimeMinutes(List<FlightRoute> routes) {
+        return routes.stream()
+                .mapToDouble(route -> estimatedTimeMinutes(route, 226.0))
+                .max()
+                .orElseThrow();
+    }
+
+    private double estimatedTimeMinutes(FlightRoute route, double cruiseSpeedKmh) {
+        double distanceKm = routeCalculationService.totalDistanceKm(route);
+        double estimatedHours = routeCalculationService.estimatedTimeHours(distanceKm, cruiseSpeedKmh);
+
+        return routeCalculationService.estimatedTimeMinutes(estimatedHours);
     }
 }

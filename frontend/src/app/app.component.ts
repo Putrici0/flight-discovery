@@ -30,6 +30,12 @@ interface AircraftOption {
   recommendedReserveMinutes: number;
 }
 
+const MOCK_FUEL_PRICES: Record<string, number> = {
+  AVGAS_100LL: 2.85,
+  JET_A1: 1.95,
+  MOGAS: 1.75
+};
+
 const AIRPORT_OPTIONS: AirportLocation[] = [
   {
     code: 'GCLP',
@@ -99,7 +105,7 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     aircraftId: 'cessna-172',
     cruiseSpeedKmh: 226,
     fuelBurnLitersPerHour: 34,
-    fuelPricePerLiter: null,
+    fuelPricePerLiter: MOCK_FUEL_PRICES['AVGAS_100LL'],
     preference: 'coast',
     safetyMarginPercent: 15
   };
@@ -119,6 +125,9 @@ export class AppComponent implements AfterViewInit, OnDestroy {
   protected selectedRouteIndex = 0;
   protected isLoading = false;
   protected errorMessage = '';
+  protected fuelType = AIRCRAFT_OPTIONS[0].fuelType;
+
+  private fuelPriceEditedManually = false;
 
   private map?: L.Map;
   private readonly routesLayer = L.layerGroup();
@@ -162,7 +171,7 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     this.selectedRouteIndex = 0;
     this.renderMap();
 
-    this.recommendationService.recommend(this.form).subscribe({
+    this.recommendationService.recommend(this.recommendationRequest()).subscribe({
       next: (response) => {
         this.recommendations = response.recommendations;
         this.debugInfo = response.debugInfo;
@@ -227,6 +236,20 @@ export class AppComponent implements AfterViewInit, OnDestroy {
 
     this.form.cruiseSpeedKmh = aircraft.cruiseSpeedKmh;
     this.form.fuelBurnLitersPerHour = aircraft.fuelBurnLitersPerHour;
+    this.fuelType = aircraft.fuelType;
+    this.form.fuelPricePerLiter = MOCK_FUEL_PRICES[aircraft.fuelType] ?? null;
+    this.fuelPriceEditedManually = false;
+  }
+
+  protected onFuelPriceChanged(value: number | null): void {
+    this.fuelPriceEditedManually = value !== null;
+  }
+
+  private recommendationRequest(): RecommendationRequest {
+    return {
+      ...this.form,
+      fuelPricePerLiter: this.fuelPriceEditedManually ? this.form.fuelPricePerLiter : null
+    };
   }
 
   private renderMap(): void {

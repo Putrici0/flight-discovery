@@ -131,4 +131,36 @@ class RecommendationControllerTest {
                 .andExpect(jsonPath("$.recommendations[0].fuelPricePerLiter").value(2.85))
                 .andExpect(jsonPath("$.recommendations[0].fuelPriceSource").value("MOCK"));
     }
+
+    @Test
+    void returnsDevelopmentDebugInformation() throws Exception {
+        String requestBody = """
+                {
+                  "departureAirport": "GCLP",
+                  "availableFlightTimeMinutes": 55,
+                  "aircraftId": "cessna-172",
+                  "cruiseSpeedKmh": 226,
+                  "fuelBurnLitersPerHour": 34,
+                  "fuelPricePerLiter": 2.3,
+                  "preference": "coast",
+                  "safetyMarginPercent": 15
+                }
+                """;
+
+        mockMvc.perform(post("/api/recommendations/debug")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.request.departureAirport").value("GCLP"))
+                .andExpect(jsonPath("$.aircraft.id").value("cessna-172"))
+                .andExpect(jsonPath("$.usefulAvailableTimeMinutes").value(8.5))
+                .andExpect(jsonPath("$.compatibleWaypoints").isNumber())
+                .andExpect(jsonPath("$.generatedCandidateRoutes").isNumber())
+                .andExpect(jsonPath("$.discardedRoutes").isNumber())
+                .andExpect(jsonPath("$.finalRoutes").isNumber())
+                .andExpect(jsonPath("$.discards[0].routeId").exists())
+                .andExpect(jsonPath("$.discards[0].stage").exists())
+                .andExpect(jsonPath("$.discards[0].reason").exists())
+                .andExpect(jsonPath("$.recommendations").isArray());
+    }
 }

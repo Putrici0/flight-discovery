@@ -22,6 +22,9 @@ public class RouteCandidateGenerator {
     private static final Logger LOGGER = LoggerFactory.getLogger(RouteCandidateGenerator.class);
     private static final double MAX_ALLOWED_TIME_OVERRUN_RATIO = 1.25;
     private static final int MAX_GENERATED_ROUTES = 30;
+    private static final double PREFERRED_ROUTE_RATIO = 0.80;
+    private static final String TIME_DISCARD_REASON = "Estimated route time exceeds useful available time plus 25% tolerance";
+    private static final String CANDIDATE_LIMIT_DISCARD_REASON = "Not selected after dynamic candidate preference and diversity limit";
 
     private final MockWaypointRepository waypointRepository;
     private final RouteCalculationService routeCalculationService;
@@ -60,22 +63,43 @@ public class RouteCandidateGenerator {
         candidates.addAll(singleWaypointRoutes(departureAirport, prioritizedWaypoints));
         candidates.addAll(twoWaypointRoutes(departureAirport, prioritizedWaypoints));
 
-        List<FlightRoute> timeViableCandidates = candidates.stream()
-                .filter(route -> fitsAvailableTime(route, availableTimeMinutes, cruiseSpeedKmh))
-                .toList();
+        List<RouteCandidateDiscard> discardedCandidates = new ArrayList<>();
+        List<FlightRoute> timeViableCandidates = new ArrayList<>();
+        for (FlightRoute candidate : candidates) {
+            double estimatedTimeMinutes = estimatedTimeMinutes(candidate, cruiseSpeedKmh);
+            double limitMinutes = availableTimeMinutes * MAX_ALLOWED_TIME_OVERRUN_RATIO;
+
+            if (estimatedTimeMinutes <= limitMinutes) {
+                timeViableCandidates.add(candidate);
+            } else {
+                discardedCandidates.add(new RouteCandidateDiscard(
+                        candidate,
+                        TIME_DISCARD_REASON,
+                        round(estimatedTimeMinutes),
+                        round(limitMinutes)
+                ));
+            }
+        }
         LOGGER.info("Recommendation diagnostics: generatedCandidates={} discardedGeneratedCandidatesByTime={} timeViableGeneratedCandidates={}",
                 candidates.size(), candidates.size() - timeViableCandidates.size(), timeViableCandidates.size());
 
-        List<FlightRoute> limitedCandidates = timeViableCandidates.stream()
-                .sorted(routeComparator(preference))
-                .limit(MAX_GENERATED_ROUTES)
-                .toList();
+        List<FlightRoute> limitedCandidates = limitCandidates(timeViableCandidates, preference);
+        SetUtils.notSelected(timeViableCandidates, limitedCandidates).stream()
+                .map(route -> new RouteCandidateDiscard(
+                        route,
+                        CANDIDATE_LIMIT_DISCARD_REASON,
+                        round(estimatedTimeMinutes(route, cruiseSpeedKmh)),
+                        round(availableTimeMinutes * MAX_ALLOWED_TIME_OVERRUN_RATIO)
+                ))
+                .forEach(discardedCandidates::add);
         LOGGER.info("Recommendation diagnostics: returnedGeneratedCandidatesAfterLimit={}", limitedCandidates.size());
 
         return new RouteGenerationResult(
                 limitedCandidates,
+                prioritizedWaypoints.size(),
                 candidates.size(),
-                candidates.size() - timeViableCandidates.size()
+                candidates.size() - timeViableCandidates.size(),
+                discardedCandidates
         );
     }
 
@@ -95,6 +119,45 @@ public class RouteCandidateGenerator {
         }
 
         return routes;
+    }
+
+    private List<FlightRoute> limitCandidates(List<FlightRoute> candidates, String preference) {
+        if (preference == null || preference.isBlank()) {
+            return candidates.stream()
+                    .sorted(routeComparator(preference))
+                    .limit(MAX_GENERATED_ROUTES)
+                    .toList();
+        }
+
+        List<FlightRoute> preferredRoutes = candidates.stream()
+                .filter(route -> routeMatchesPreference(route, preference))
+                .sorted(routeComparator(preference))
+                .toList();
+        List<FlightRoute> alternativeRoutes = candidates.stream()
+                .filter(route -> !routeMatchesPreference(route, preference))
+                .sorted(routeComparator(preference))
+                .toList();
+        int preferredTarget = (int) Math.round(MAX_GENERATED_ROUTES * PREFERRED_ROUTE_RATIO);
+        int alternativeTarget = MAX_GENERATED_ROUTES - preferredTarget;
+
+        List<FlightRoute> selectedRoutes = new ArrayList<>();
+        addRoutes(selectedRoutes, preferredRoutes, preferredTarget);
+        addRoutes(selectedRoutes, alternativeRoutes, alternativeTarget);
+        addRoutes(selectedRoutes, preferredRoutes, MAX_GENERATED_ROUTES - selectedRoutes.size());
+        addRoutes(selectedRoutes, alternativeRoutes, MAX_GENERATED_ROUTES - selectedRoutes.size());
+
+        return selectedRoutes;
+    }
+
+    private void addRoutes(List<FlightRoute> selectedRoutes, List<FlightRoute> candidates, int limit) {
+        if (limit <= 0) {
+            return;
+        }
+
+        candidates.stream()
+                .filter(candidate -> selectedRoutes.stream().noneMatch(selected -> selected.id().equals(candidate.id())))
+                .limit(limit)
+                .forEach(selectedRoutes::add);
     }
 
     private FlightRoute singleWaypointRoute(Airport departureAirport, VisualWaypoint waypoint) {
@@ -138,11 +201,14 @@ public class RouteCandidateGenerator {
     }
 
     private boolean fitsAvailableTime(FlightRoute route, double availableTimeMinutes, double cruiseSpeedKmh) {
+        return estimatedTimeMinutes(route, cruiseSpeedKmh) <= availableTimeMinutes * MAX_ALLOWED_TIME_OVERRUN_RATIO;
+    }
+
+    private double estimatedTimeMinutes(FlightRoute route, double cruiseSpeedKmh) {
         double distanceKm = routeCalculationService.totalDistanceKm(route);
         double estimatedTimeHours = routeCalculationService.estimatedTimeHours(distanceKm, cruiseSpeedKmh);
-        double estimatedTimeMinutes = routeCalculationService.estimatedTimeMinutes(estimatedTimeHours);
 
-        return estimatedTimeMinutes <= availableTimeMinutes * MAX_ALLOWED_TIME_OVERRUN_RATIO;
+        return routeCalculationService.estimatedTimeMinutes(estimatedTimeHours);
     }
 
     private boolean isCompatibleWithDepartureAirport(VisualWaypoint waypoint, Airport departureAirport) {
@@ -197,6 +263,18 @@ public class RouteCandidateGenerator {
                     .forEach(tags::add);
 
             return tags;
+        }
+    }
+
+    private static final class SetUtils {
+
+        private SetUtils() {
+        }
+
+        private static List<FlightRoute> notSelected(List<FlightRoute> candidates, List<FlightRoute> selectedRoutes) {
+            return candidates.stream()
+                    .filter(candidate -> selectedRoutes.stream().noneMatch(selected -> selected.id().equals(candidate.id())))
+                    .toList();
         }
     }
 }

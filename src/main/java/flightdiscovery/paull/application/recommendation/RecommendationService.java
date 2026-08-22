@@ -16,6 +16,8 @@ import org.springframework.web.server.ResponseStatusException;
 import flightdiscovery.paull.api.recommendation.RecommendationRequest;
 import flightdiscovery.paull.api.recommendation.RecommendationResponse;
 import flightdiscovery.paull.api.recommendation.RecommendationDebugInfo;
+import flightdiscovery.paull.api.recommendation.RecommendationDevelopmentDebugResponse;
+import flightdiscovery.paull.api.recommendation.RecommendationRouteDiscardDebug;
 import flightdiscovery.paull.api.recommendation.RecommendedRouteResponse;
 import flightdiscovery.paull.domain.calculation.RouteCalculationService;
 import flightdiscovery.paull.domain.model.Aircraft;
@@ -41,6 +43,8 @@ public class RecommendationService {
     private static final double MAX_ALLOWED_TIME_OVERRUN_RATIO = 1.25;
     private static final double LOW_TIME_MARGIN_RATIO = 0.90;
     private static final double HIGH_COST_THRESHOLD_EUR = 150.0;
+    private static final String TIME_DISCARD_REASON = "Estimated route time exceeds useful available time plus 25% tolerance";
+    private static final String FINAL_SELECTION_DISCARD_REASON = "Not selected after score and diversity recommendation limit";
 
     private final MockRouteRepository routeRepository;
     private final MockAirportRepository airportRepository;
@@ -131,6 +135,88 @@ public class RecommendationService {
         );
 
         return new RecommendationResponse(viableRecommendations, warnings(viableRecommendations), debugInfo);
+    }
+
+    public RecommendationDevelopmentDebugResponse debug(RecommendationRequest request) {
+        Aircraft aircraft = resolveAircraft(request);
+        double cruiseSpeedKmh = resolveCruiseSpeed(request, aircraft);
+        double fuelBurnLitersPerHour = resolveFuelBurn(request, aircraft);
+        FuelPrice fuelPrice = resolveFuelPrice(request, aircraft);
+        double usefulAvailableTimeMinutes = usefulAvailableTimeMinutes(request, aircraft);
+
+        Airport departureAirport = resolveDepartureAirport(request.departureAirport());
+        List<FlightRoute> predefinedRoutes = routeRepository.findByDepartureAirportCode(departureAirport.code());
+        RouteGenerationResult generationResult = routeCandidateGenerator.generateWithDebug(
+                departureAirport,
+                usefulAvailableTimeMinutes,
+                cruiseSpeedKmh,
+                request.preference()
+        );
+        List<FlightRoute> generatedRoutes = generationResult.routes();
+        List<FlightRoute> routesForScoring = Stream.concat(predefinedRoutes.stream(), generatedRoutes.stream())
+                .toList();
+        var scoredRoutes = routesForScoring.stream()
+                .map(route -> new ScoredRoute(
+                        route,
+                        toRecommendation(route, request, usefulAvailableTimeMinutes, cruiseSpeedKmh, fuelBurnLitersPerHour, fuelPrice)
+                ))
+                .toList();
+        var usefulTimeViableRoutes = scoredRoutes.stream()
+                .filter(scoredRoute -> isWithinAllowedTime(scoredRoute.recommendation(), usefulAvailableTimeMinutes))
+                .toList();
+        var viableRecommendations = diverseRecommendations(usefulTimeViableRoutes).stream()
+                .map(ScoredRoute::recommendation)
+                .toList();
+        List<RecommendationRouteDiscardDebug> discards = new ArrayList<>();
+        discards.addAll(generationResult.discardedRoutes().stream()
+                .map(discard -> toDiscardDebug(discard, "GENERATED_TIME_FILTER"))
+                .toList());
+        discards.addAll(scoredRoutes.stream()
+                .filter(scoredRoute -> !isWithinAllowedTime(scoredRoute.recommendation(), usefulAvailableTimeMinutes))
+                .map(scoredRoute -> new RecommendationRouteDiscardDebug(
+                        scoredRoute.route().id(),
+                        scoredRoute.route().name(),
+                        "SCORING_TIME_FILTER",
+                        TIME_DISCARD_REASON,
+                        scoredRoute.recommendation().estimatedTimeMinutes(),
+                        round(usefulAvailableTimeMinutes * MAX_ALLOWED_TIME_OVERRUN_RATIO)
+                ))
+                .toList());
+        discards.addAll(usefulTimeViableRoutes.stream()
+                .filter(scoredRoute -> viableRecommendations.stream()
+                        .noneMatch(recommendation -> recommendation.id().equals(scoredRoute.recommendation().id())))
+                .map(scoredRoute -> new RecommendationRouteDiscardDebug(
+                        scoredRoute.route().id(),
+                        scoredRoute.route().name(),
+                        "FINAL_SELECTION",
+                        FINAL_SELECTION_DISCARD_REASON,
+                        scoredRoute.recommendation().estimatedTimeMinutes(),
+                        round(usefulAvailableTimeMinutes * MAX_ALLOWED_TIME_OVERRUN_RATIO)
+                ))
+                .toList());
+
+        return new RecommendationDevelopmentDebugResponse(
+                request,
+                aircraft,
+                round(usefulAvailableTimeMinutes),
+                generationResult.compatibleWaypointCount(),
+                generationResult.generatedCandidateRoutes(),
+                discards.size(),
+                viableRecommendations.size(),
+                discards,
+                viableRecommendations
+        );
+    }
+
+    private RecommendationRouteDiscardDebug toDiscardDebug(RouteCandidateDiscard discard, String stage) {
+        return new RecommendationRouteDiscardDebug(
+                discard.route().id(),
+                discard.route().name(),
+                stage,
+                discard.reason(),
+                discard.estimatedTimeMinutes(),
+                discard.limitMinutes()
+        );
     }
 
     private List<ScoredRoute> diverseRecommendations(List<ScoredRoute> scoredRoutes) {

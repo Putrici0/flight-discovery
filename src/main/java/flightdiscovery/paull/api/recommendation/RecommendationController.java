@@ -22,4 +22,9 @@ public class RecommendationController {
     public RecommendationResponse recommend(@Valid @RequestBody RecommendationRequest request) {
         return recommendationService.recommend(request);
     }
+
+    @PostMapping("/debug")
+    public RecommendationDevelopmentDebugResponse debug(@Valid @RequestBody RecommendationRequest request) {
+        return recommendationService.debug(request);
+    }
 }
