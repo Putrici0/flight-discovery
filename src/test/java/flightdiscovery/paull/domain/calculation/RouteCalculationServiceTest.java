@@ -33,6 +33,7 @@ class RouteCalculationServiceTest {
                         new Waypoint("Waypoint 1", 0.0, 1.0),
                         new Waypoint("Waypoint 2", 1.0, 1.0)
                 ),
+                List.of("test"),
                 0.0,
                 0.0,
                 5.0

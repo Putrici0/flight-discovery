@@ -16,15 +16,16 @@ class RouteScoringServiceTest {
 
     @Test
     void calculatesTotalScoreWithConfiguredWeights() {
-        FlightRoute route = routeWithScenicScore(8.0);
+        FlightRoute route = routeWithScenicScoreAndTags(8.0, List.of("coast"));
 
-        RouteScore score = scoringService.score(route, 90.0, 120, 100.0);
+        RouteScore score = scoringService.score(route, 90.0, 120, 100.0, "coast");
 
         assertEquals(80.0, score.weatherScore(), 0.01);
         assertEquals(86.5, score.timeFitScore(), 0.01);
+        assertEquals(100.0, score.preferenceScore(), 0.01);
         assertEquals(80.0, score.scenicScore(), 0.01);
         assertEquals(92.14, score.costScore(), 0.01);
-        assertEquals(83.77, score.totalScore(), 0.01);
+        assertEquals(86.56, score.totalScore(), 0.01);
     }
 
     @Test
@@ -51,18 +52,28 @@ class RouteScoringServiceTest {
 
     @Test
     void normalizesScenicScoreFromMockScaleToOneHundred() {
-        FlightRoute route = routeWithScenicScore(8.7);
+        FlightRoute route = routeWithScenicScoreAndTags(8.7, List.of("panoramic"));
 
         assertEquals(87.0, scoringService.scenicScore(route), 0.01);
     }
 
-    private FlightRoute routeWithScenicScore(double scenicScore) {
+    @Test
+    void boostsRoutesThatMatchUserPreference() {
+        FlightRoute matchingRoute = routeWithScenicScoreAndTags(8.0, List.of("coast", "short"));
+        FlightRoute nonMatchingRoute = routeWithScenicScoreAndTags(8.0, List.of("mountain"));
+
+        assertEquals(100.0, scoringService.preferenceScore(matchingRoute, "coast"), 0.01);
+        assertEquals(45.0, scoringService.preferenceScore(nonMatchingRoute, "coast"), 0.01);
+    }
+
+    private FlightRoute routeWithScenicScoreAndTags(double scenicScore, List<String> tags) {
         return new FlightRoute(
                 "test-route",
                 "Test route",
                 "Test route",
                 new Airport("TEST", "Test Airport", 0.0, 0.0),
                 List.of(),
+                tags,
                 0.0,
                 0.0,
                 scenicScore

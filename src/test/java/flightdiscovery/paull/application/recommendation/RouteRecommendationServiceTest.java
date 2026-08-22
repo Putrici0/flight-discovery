@@ -1,6 +1,7 @@
 package flightdiscovery.paull.application.recommendation;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 import org.junit.jupiter.api.Test;
 
@@ -35,6 +36,40 @@ class RouteRecommendationServiceTest {
         }
     }
 
+    @Test
+    void filtersRoutesThatExceedAvailableTimeByMoreThanTwentyFivePercent() {
+        int availableTimeMinutes = 20;
+        var response = recommendationService.recommend(requestWithAvailableTime(availableTimeMinutes));
+
+        assertTrue(response.recommendations().stream()
+                .allMatch(recommendation -> recommendation.estimatedTimeMinutes() <= availableTimeMinutes * 1.25));
+    }
+
+    @Test
+    void returnsWarningWhenFewerThanThreeRoutesAreAvailableAfterFiltering() {
+        var response = recommendationService.recommend(requestWithAvailableTime(20));
+
+        assertTrue(response.recommendations().size() < 3);
+        assertTrue(response.warnings().contains("Fewer than 3 routes fit within the available flight time plus 25% tolerance."));
+    }
+
+    @Test
+    void userPreferenceInfluencesRecommendationRanking() {
+        var coastRecommendations = recommendationService.recommend(requestWithPreference("coast")).recommendations();
+        var mountainRecommendations = recommendationService.recommend(requestWithPreference("mountain")).recommendations();
+
+        assertNotEquals(coastRecommendations.getFirst().id(), mountainRecommendations.getFirst().id());
+    }
+
+    @Test
+    void explanationMentionsWhetherRouteMatchesPreference() {
+        var recommendation = recommendationService.recommend(requestWithPreference("mountain"))
+                .recommendations()
+                .getFirst();
+
+        assertTrue(recommendation.explanation().contains("preferencia mountain"));
+    }
+
     private RecommendationRequest requestWithAvailableTime(int availableTimeMinutes) {
         return new RecommendationRequest(
                 "GCLP",
@@ -44,6 +79,18 @@ class RouteRecommendationServiceTest {
                 34.0,
                 2.3,
                 "coast"
+        );
+    }
+
+    private RecommendationRequest requestWithPreference(String preference) {
+        return new RecommendationRequest(
+                "GCLP",
+                120,
+                "cessna-172",
+                226.0,
+                34.0,
+                2.3,
+                preference
         );
     }
 }

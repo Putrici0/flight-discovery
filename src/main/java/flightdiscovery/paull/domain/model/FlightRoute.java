@@ -8,6 +8,7 @@ public record FlightRoute(
         String description,
         Airport departureAirport,
         List<Waypoint> waypoints,
+        List<String> tags,
         double estimatedDistanceKm,
         double estimatedDurationMinutes,
         double scenicScore

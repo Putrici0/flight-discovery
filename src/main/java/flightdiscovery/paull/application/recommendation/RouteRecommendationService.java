@@ -1,6 +1,7 @@
 package flightdiscovery.paull.application.recommendation;
 
 import java.util.Comparator;
+import java.util.List;
 
 import org.springframework.stereotype.Service;
 
@@ -16,6 +17,9 @@ import flightdiscovery.paull.domain.scoring.RouteScoringService;
 
 @Service
 public class RouteRecommendationService {
+
+    private static final int MAX_RECOMMENDATIONS = 3;
+    private static final double MAX_ALLOWED_TIME_OVERRUN_RATIO = 1.25;
 
     private final FlightDataRepository flightDataRepository;
     private final RouteCalculationService routeCalculationService;
@@ -35,14 +39,27 @@ public class RouteRecommendationService {
         double cruiseSpeedKmh = resolveCruiseSpeed(request);
         double fuelBurnLitersPerHour = resolveFuelBurn(request);
 
-        var recommendations = flightDataRepository.routes().stream()
+        var viableRecommendations = flightDataRepository.routes().stream()
                 .filter(route -> route.departureAirport().code().equalsIgnoreCase(request.departureAirport()))
                 .map(route -> toRecommendation(route, request, cruiseSpeedKmh, fuelBurnLitersPerHour))
+                .filter(recommendation -> isWithinAllowedTime(recommendation, request.availableFlightTimeMinutes()))
                 .sorted(Comparator.comparingDouble(RecommendedRouteResponse::totalScore).reversed())
-                .limit(3)
+                .limit(MAX_RECOMMENDATIONS)
                 .toList();
 
-        return new RecommendationResponse(recommendations);
+        return new RecommendationResponse(viableRecommendations, warnings(viableRecommendations));
+    }
+
+    private boolean isWithinAllowedTime(RecommendedRouteResponse recommendation, int availableTimeMinutes) {
+        return recommendation.estimatedTimeMinutes() <= availableTimeMinutes * MAX_ALLOWED_TIME_OVERRUN_RATIO;
+    }
+
+    private List<String> warnings(List<RecommendedRouteResponse> recommendations) {
+        if (recommendations.size() >= MAX_RECOMMENDATIONS) {
+            return List.of();
+        }
+
+        return List.of("Fewer than 3 routes fit within the available flight time plus 25% tolerance.");
     }
 
     private RecommendedRouteResponse toRecommendation(
@@ -60,7 +77,8 @@ public class RouteRecommendationService {
                 route,
                 estimatedTimeMinutes,
                 request.availableFlightTimeMinutes(),
-                estimatedCost
+                estimatedCost,
+                request.preference()
         );
 
         return new RecommendedRouteResponse(
@@ -116,12 +134,24 @@ public class RouteRecommendationService {
                 : estimatedCost <= 160.0
                 ? "un coste estimado moderado"
                 : "un coste estimado alto";
+        String preferenceFit = routeMatchesPreference(route, request.preference())
+                ? "encaja con la preferencia " + request.preference()
+                : "no encaja directamente con la preferencia " + request.preference();
 
         return "Esta ruta " + timeFit + ", tiene " + scenicFit
-                + " y " + costFit + ". Se estiman "
+                + ", " + costFit + " y " + preferenceFit + ". Se estiman "
                 + round(estimatedTimeMinutes) + " minutos, "
                 + roundOneDecimal(estimatedFuelLiters) + " litros y "
                 + roundTwoDecimals(estimatedCost) + " EUR.";
+    }
+
+    private boolean routeMatchesPreference(FlightRoute route, String preference) {
+        if (preference == null || preference.isBlank()) {
+            return false;
+        }
+
+        return route.tags().stream()
+                .anyMatch(tag -> tag.equalsIgnoreCase(preference.trim()));
     }
 
     private String timeFitText(double estimatedTimeMinutes, int availableTimeMinutes) {

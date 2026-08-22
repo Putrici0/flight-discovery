@@ -49,6 +49,7 @@ public final class MockFlightData {
                             new Waypoint("Puerto Rico", 27.7894, -15.7104),
                             new Waypoint("Arguineguin", 27.7589, -15.6816)
                     ),
+                    List.of("coast", "short", "panoramic"),
                     145.0,
                     45.0,
                     8.2
@@ -63,6 +64,7 @@ public final class MockFlightData {
                             new Waypoint("Roque Nublo", 27.9676, -15.6007),
                             new Waypoint("Tejeda", 27.9956, -15.6156)
                     ),
+                    List.of("mountain", "panoramic", "short"),
                     120.0,
                     38.0,
                     8.8
@@ -77,6 +79,7 @@ public final class MockFlightData {
                             new Waypoint("Canal Gran Canaria Tenerife", 28.1800, -16.0000),
                             new Waypoint("Costa de Guimar", 28.2920, -16.3730)
                     ),
+                    List.of("islands", "coast", "panoramic"),
                     225.0,
                     68.0,
                     9.0
@@ -91,6 +94,7 @@ public final class MockFlightData {
                             new Waypoint("Costa Adeje", 28.0866, -16.7350),
                             new Waypoint("Las Galletas", 28.0080, -16.6530)
                     ),
+                    List.of("coast", "short"),
                     115.0,
                     35.0,
                     8.0
@@ -105,6 +109,7 @@ public final class MockFlightData {
                             new Waypoint("Puerto de la Cruz", 28.4133, -16.5482),
                             new Waypoint("Anaga", 28.5447, -16.2009)
                     ),
+                    List.of("mountain", "panoramic", "coast"),
                     130.0,
                     40.0,
                     8.7

@@ -10,19 +10,28 @@ public class RouteScoringService {
 
     private static final double MOCK_WEATHER_SCORE = 80.0;
 
-    public RouteScore score(FlightRoute route, double estimatedTimeMinutes, int availableTimeMinutes, double estimatedCost) {
+    public RouteScore score(
+            FlightRoute route,
+            double estimatedTimeMinutes,
+            int availableTimeMinutes,
+            double estimatedCost,
+            String preference
+    ) {
         double weatherScore = MOCK_WEATHER_SCORE;
         double timeFitScore = timeFitScore(estimatedTimeMinutes, availableTimeMinutes);
+        double preferenceScore = preferenceScore(route, preference);
         double scenicScore = scenicScore(route);
         double costScore = costScore(estimatedCost);
-        double totalScore = weatherScore * 0.30
+        double totalScore = weatherScore * 0.20
                 + timeFitScore * 0.30
+                + preferenceScore * 0.20
                 + scenicScore * 0.25
-                + costScore * 0.15;
+                + costScore * 0.05;
 
         return new RouteScore(
                 round(weatherScore),
                 round(timeFitScore),
+                round(preferenceScore),
                 round(scenicScore),
                 round(costScore),
                 round(totalScore)
@@ -78,6 +87,17 @@ public class RouteScoringService {
         }
 
         return Math.min(100.0, route.scenicScore());
+    }
+
+    public double preferenceScore(FlightRoute route, String preference) {
+        if (preference == null || preference.isBlank()) {
+            return 60.0;
+        }
+
+        boolean matchesPreference = route.tags().stream()
+                .anyMatch(tag -> tag.equalsIgnoreCase(preference.trim()));
+
+        return matchesPreference ? 100.0 : 45.0;
     }
 
     private double round(double value) {

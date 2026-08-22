@@ -50,7 +50,8 @@ class RecommendationControllerTest {
                 .andExpect(jsonPath("$.recommendations[0].estimatedCost").isNumber())
                 .andExpect(jsonPath("$.recommendations[0].totalScore").isNumber())
                 .andExpect(jsonPath("$.recommendations[0].scoreBreakdown.totalScore").isNumber())
-                .andExpect(jsonPath("$.recommendations[0].explanation").exists());
+                .andExpect(jsonPath("$.recommendations[0].explanation").exists())
+                .andExpect(jsonPath("$.warnings").isArray());
     }
 
     @Test
@@ -74,5 +75,27 @@ class RecommendationControllerTest {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.message").value("Invalid recommendation request"))
                 .andExpect(jsonPath("$.errors").isArray());
+    }
+
+    @Test
+    void returnsWarningsWhenTimeFilterLeavesFewerThanThreeRecommendations() throws Exception {
+        String requestBody = """
+                {
+                  "departureAirport": "GCLP",
+                  "availableFlightTimeMinutes": 20,
+                  "aircraftId": "cessna-172",
+                  "cruiseSpeedKmh": 226,
+                  "fuelBurnLitersPerHour": 34,
+                  "fuelPricePerLiter": 2.3,
+                  "preference": "coast"
+                }
+                """;
+
+        mockMvc.perform(post("/api/recommendations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.recommendations.length()", lessThanOrEqualTo(2)))
+                .andExpect(jsonPath("$.warnings[0]").exists());
     }
 }
