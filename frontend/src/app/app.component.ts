@@ -25,6 +25,9 @@ interface AircraftOption {
   name: string;
   cruiseSpeedKmh: number;
   fuelBurnLitersPerHour: number;
+  fuelType: string;
+  maxEnduranceHours: number;
+  recommendedReserveMinutes: number;
 }
 
 const AIRPORT_OPTIONS: AirportLocation[] = [
@@ -57,19 +60,28 @@ const AIRCRAFT_OPTIONS: AircraftOption[] = [
     id: 'cessna-172',
     name: 'Cessna 172',
     cruiseSpeedKmh: 226,
-    fuelBurnLitersPerHour: 34
+    fuelBurnLitersPerHour: 34,
+    fuelType: 'AVGAS_100LL',
+    maxEnduranceHours: 4.4,
+    recommendedReserveMinutes: 45
   },
   {
     id: 'piper-pa-28',
     name: 'Piper PA-28',
     cruiseSpeedKmh: 215,
-    fuelBurnLitersPerHour: 36
+    fuelBurnLitersPerHour: 36,
+    fuelType: 'AVGAS_100LL',
+    maxEnduranceHours: 5.0,
+    recommendedReserveMinutes: 45
   },
   {
     id: 'diamond-da40',
     name: 'Diamond DA40',
     cruiseSpeedKmh: 235,
-    fuelBurnLitersPerHour: 28
+    fuelBurnLitersPerHour: 28,
+    fuelType: 'JET_A1',
+    maxEnduranceHours: 5.4,
+    recommendedReserveMinutes: 45
   }
 ];
 
@@ -87,7 +99,7 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     aircraftId: 'cessna-172',
     cruiseSpeedKmh: 226,
     fuelBurnLitersPerHour: 34,
-    fuelPricePerLiter: 2.3,
+    fuelPricePerLiter: null,
     preference: 'coast',
     safetyMarginPercent: 15
   };
@@ -176,6 +188,10 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     return this.recommendations[this.selectedRouteIndex];
   }
 
+  protected selectedAircraft(): AircraftOption | undefined {
+    return this.aircraftOptions.find((option) => option.id === this.form.aircraftId);
+  }
+
   protected routeTypeLabel(routeType?: RouteType): string {
     switch (routeType) {
       case 'PREDEFINED':
@@ -189,8 +205,17 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     }
   }
 
+  protected fuelPriceSourceLabel(source?: 'MANUAL' | 'MOCK'): string {
+    return source === 'MANUAL' ? 'Manual' : 'Mock';
+  }
+
   protected usefulFlightTimeMinutes(): number {
-    return this.form.availableFlightTimeMinutes * (100 - this.form.safetyMarginPercent) / 100;
+    const availableAfterReserveMinutes = Math.max(
+      0,
+      this.form.availableFlightTimeMinutes - (this.selectedAircraft()?.recommendedReserveMinutes ?? 0)
+    );
+
+    return availableAfterReserveMinutes * (100 - this.form.safetyMarginPercent) / 100;
   }
 
   protected applyAircraftDefaults(): void {

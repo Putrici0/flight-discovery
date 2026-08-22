@@ -16,6 +16,8 @@ public record RecommendedRouteResponse(
         double estimatedTimeMinutes,
         double estimatedTimeHours,
         double estimatedFuelLiters,
+        double fuelPricePerLiter,
+        String fuelPriceSource,
         double estimatedCost,
         double totalScore,
         double weatherScore,

@@ -58,6 +58,21 @@
         </select>
       </label>
 
+      <dl class="aircraft-summary" *ngIf="selectedAircraft() as aircraft">
+        <div>
+          <dt>Combustible</dt>
+          <dd>{{ aircraft.fuelType }}</dd>
+        </div>
+        <div>
+          <dt>Autonomia max.</dt>
+          <dd>{{ aircraft.maxEnduranceHours | number:'1.1-1' }} h</dd>
+        </div>
+        <div>
+          <dt>Reserva recomendada</dt>
+          <dd>{{ aircraft.recommendedReserveMinutes }} min</dd>
+        </div>
+      </dl>
+
       <label>
         Velocidad crucero
         <input
@@ -90,7 +105,6 @@
           min="0"
           step="0.01"
           [(ngModel)]="form.fuelPricePerLiter"
-          required
         >
       </label>
 
@@ -161,6 +175,10 @@
             <div>
               <dt>Coste</dt>
               <dd>{{ route.estimatedCost | currency:'EUR':'symbol':'1.0-0' }}</dd>
+            </div>
+            <div>
+              <dt>Precio combustible</dt>
+              <dd>{{ route.fuelPricePerLiter | currency:'EUR':'symbol':'1.2-2' }}/L {{ fuelPriceSourceLabel(route.fuelPriceSource) }}</dd>
             </div>
             <div>
               <dt>Score total</dt>
@@ -267,6 +285,10 @@
             <div>
               <dt>Coste</dt>
               <dd>{{ route.estimatedCost | currency:'EUR':'symbol':'1.0-0' }}</dd>
+            </div>
+            <div>
+              <dt>Precio combustible</dt>
+              <dd>{{ route.fuelPricePerLiter | currency:'EUR':'symbol':'1.2-2' }}/L {{ fuelPriceSourceLabel(route.fuelPriceSource) }}</dd>
             </div>
             <div>
               <dt>Score total</dt>

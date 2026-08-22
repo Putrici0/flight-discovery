@@ -61,4 +61,29 @@ class MockFlightDataTest {
                 "punta de teno"
         ).forEach(expectedName -> assertTrue(waypointNames.contains(expectedName)));
     }
+
+    @Test
+    void providesAircraftDefaultsWithFuelAndReserveData() {
+        var aircraft = MockFlightData.aircraft();
+
+        assertTrue(aircraft.stream().anyMatch(option -> option.id().equals("cessna-172")));
+        assertTrue(aircraft.stream().anyMatch(option -> option.id().equals("piper-pa-28")));
+        assertTrue(aircraft.stream().anyMatch(option -> option.id().equals("diamond-da40")));
+        assertTrue(aircraft.stream().allMatch(option -> option.cruiseSpeedKmh() > 0.0));
+        assertTrue(aircraft.stream().allMatch(option -> option.fuelBurnLitersPerHour() > 0.0));
+        assertTrue(aircraft.stream().allMatch(option -> option.fuelType() != null && !option.fuelType().isBlank()));
+        assertTrue(aircraft.stream().allMatch(option -> option.maxEnduranceHours() > 0.0));
+        assertTrue(aircraft.stream().allMatch(option -> option.recommendedReserveMinutes() > 0));
+    }
+
+    @Test
+    void providesMockFuelPricesForSupportedFuelTypes() {
+        var fuelPrices = MockFlightData.fuelPrices();
+
+        assertTrue(fuelPrices.stream().anyMatch(fuelPrice -> fuelPrice.fuelType().equals("AVGAS_100LL")));
+        assertTrue(fuelPrices.stream().anyMatch(fuelPrice -> fuelPrice.fuelType().equals("JET_A1")));
+        assertTrue(fuelPrices.stream().anyMatch(fuelPrice -> fuelPrice.fuelType().equals("MOGAS")));
+        assertTrue(fuelPrices.stream().allMatch(fuelPrice -> fuelPrice.pricePerLiter() >= 0.0));
+        assertTrue(fuelPrices.stream().allMatch(fuelPrice -> fuelPrice.source().name().equals("MOCK")));
+    }
 }

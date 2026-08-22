@@ -15,6 +15,7 @@ import flightdiscovery.paull.domain.calculation.RouteCalculationService;
 import flightdiscovery.paull.domain.model.RouteType;
 import flightdiscovery.paull.domain.repository.MockAircraftRepository;
 import flightdiscovery.paull.domain.repository.MockAirportRepository;
+import flightdiscovery.paull.domain.repository.MockFuelPriceRepository;
 import flightdiscovery.paull.domain.repository.MockRouteRepository;
 import flightdiscovery.paull.domain.repository.MockWaypointRepository;
 import flightdiscovery.paull.domain.scoring.RouteScoringService;
@@ -26,6 +27,7 @@ class RecommendationServiceTest {
             new MockRouteRepository(),
             new MockAirportRepository(),
             new MockAircraftRepository(),
+            new MockFuelPriceRepository(),
             new RouteCalculationService(),
             new RouteScoringService(),
             new RouteCandidateGenerator(new MockWaypointRepository(), new RouteCalculationService()),
@@ -34,8 +36,8 @@ class RecommendationServiceTest {
 
     @Test
     void recommendsShorterRoutesWhenAvailableTimeIsShorter() {
-        var shortTimeRecommendations = recommendationService.recommend(requestWithAvailableTime(20)).recommendations();
-        var longTimeRecommendations = recommendationService.recommend(requestWithAvailableTime(180)).recommendations();
+        var shortTimeRecommendations = recommendationService.recommend(requestWithAvailableTime(65)).recommendations();
+        var longTimeRecommendations = recommendationService.recommend(requestWithAvailableTime(225)).recommendations();
         double longestShortRecommendation = shortTimeRecommendations.stream()
                 .mapToDouble(RecommendedRouteResponse::estimatedTimeMinutes)
                 .max()
@@ -56,16 +58,18 @@ class RecommendationServiceTest {
 
     @Test
     void filtersRoutesThatExceedAvailableTimeByMoreThanTwentyFivePercent() {
-        int availableTimeMinutes = 20;
+        int availableTimeMinutes = 65;
+        int recommendedReserveMinutes = 45;
+        double usefulFlightTimeMinutes = availableTimeMinutes - recommendedReserveMinutes;
         var response = recommendationService.recommend(requestWithAvailableTime(availableTimeMinutes));
 
         assertTrue(response.recommendations().stream()
-                .allMatch(recommendation -> recommendation.estimatedTimeMinutes() <= availableTimeMinutes * 1.25));
+                .allMatch(recommendation -> recommendation.estimatedTimeMinutes() <= usefulFlightTimeMinutes * 1.25));
     }
 
     @Test
     void doesNotReturnRoutesThatExceedUsefulTimeTolerance() {
-        int availableTimeMinutes = 10;
+        int availableTimeMinutes = 55;
         int safetyMarginPercent = 15;
         double usefulFlightTimeMinutes = 8.5;
         var response = recommendationService.recommend(requestWithSafetyMargin(availableTimeMinutes, safetyMarginPercent));
@@ -77,7 +81,7 @@ class RecommendationServiceTest {
     @Test
     void allowsRoutesUpToTwentyFivePercentOverUsefulTimeWithWarning() {
         double usefulFlightTimeMinutes = 8.5;
-        var recommendations = recommendationService.recommend(requestWithSafetyMargin(10, 15))
+        var recommendations = recommendationService.recommend(requestWithSafetyMargin(55, 15))
                 .recommendations()
                 .stream()
                 .filter(recommendation -> recommendation.estimatedTimeMinutes() > usefulFlightTimeMinutes)
@@ -185,7 +189,7 @@ class RecommendationServiceTest {
 
     @Test
     void routeWarningsMentionLowTimeMargin() {
-        var recommendations = recommendationService.recommend(requestWithAvailableTime(17))
+        var recommendations = recommendationService.recommend(requestWithAvailableTime(62))
                 .recommendations()
                 .stream()
                 .filter(recommendation -> recommendation.warnings().contains("Esta ruta deja poco margen de tiempo"))
@@ -196,7 +200,7 @@ class RecommendationServiceTest {
 
     @Test
     void routeWarningsMentionSlightTimeOverrun() {
-        var recommendations = recommendationService.recommend(requestWithSafetyMargin(10, 15))
+        var recommendations = recommendationService.recommend(requestWithSafetyMargin(55, 15))
                 .recommendations()
                 .stream()
                 .filter(recommendation -> recommendation.warnings().contains("Esta ruta supera ligeramente el tiempo disponible"))
@@ -212,6 +216,26 @@ class RecommendationServiceTest {
                 .getFirst();
 
         assertTrue(recommendation.warnings().contains("El coste estimado es alto"));
+    }
+
+    @Test
+    void usesMockFuelPriceWhenManualPriceIsOmitted() {
+        var recommendation = recommendationService.recommend(requestWithoutFuelPrice())
+                .recommendations()
+                .getFirst();
+
+        assertEquals(2.85, recommendation.fuelPricePerLiter(), 0.01);
+        assertEquals("MOCK", recommendation.fuelPriceSource());
+    }
+
+    @Test
+    void usesManualFuelPriceWhenProvided() {
+        var recommendation = recommendationService.recommend(requestWithFuelPrice(3.2))
+                .recommendations()
+                .getFirst();
+
+        assertEquals(3.2, recommendation.fuelPricePerLiter(), 0.01);
+        assertEquals("MANUAL", recommendation.fuelPriceSource());
     }
 
     @Test
@@ -339,6 +363,19 @@ class RecommendationServiceTest {
                 226.0,
                 34.0,
                 fuelPricePerLiter,
+                "coast",
+                0
+        );
+    }
+
+    private RecommendationRequest requestWithoutFuelPrice() {
+        return new RecommendationRequest(
+                "GCLP",
+                120,
+                "cessna-172",
+                226.0,
+                34.0,
+                null,
                 "coast",
                 0
         );

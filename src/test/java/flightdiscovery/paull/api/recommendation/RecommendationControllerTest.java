@@ -48,6 +48,8 @@ class RecommendationControllerTest {
                 .andExpect(jsonPath("$.recommendations[0].estimatedTimeMinutes").isNumber())
                 .andExpect(jsonPath("$.recommendations[0].estimatedTimeHours").isNumber())
                 .andExpect(jsonPath("$.recommendations[0].estimatedFuelLiters").isNumber())
+                .andExpect(jsonPath("$.recommendations[0].fuelPricePerLiter").isNumber())
+                .andExpect(jsonPath("$.recommendations[0].fuelPriceSource").value("MANUAL"))
                 .andExpect(jsonPath("$.recommendations[0].estimatedCost").isNumber())
                 .andExpect(jsonPath("$.recommendations[0].totalScore").isNumber())
                 .andExpect(jsonPath("$.recommendations[0].weatherScore").isNumber())
@@ -107,5 +109,26 @@ class RecommendationControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.recommendations.length()", lessThanOrEqualTo(2)))
                 .andExpect(jsonPath("$.warnings[0]").exists());
+    }
+
+    @Test
+    void usesMockFuelPriceWhenFuelPriceIsOmitted() throws Exception {
+        String requestBody = """
+                {
+                  "departureAirport": "GCLP",
+                  "availableFlightTimeMinutes": 120,
+                  "aircraftId": "cessna-172",
+                  "cruiseSpeedKmh": 226,
+                  "fuelBurnLitersPerHour": 34,
+                  "preference": "coast"
+                }
+                """;
+
+        mockMvc.perform(post("/api/recommendations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.recommendations[0].fuelPricePerLiter").value(2.85))
+                .andExpect(jsonPath("$.recommendations[0].fuelPriceSource").value("MOCK"));
     }
 }

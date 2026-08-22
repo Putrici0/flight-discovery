@@ -5,6 +5,8 @@ import java.util.List;
 import flightdiscovery.paull.domain.model.Aircraft;
 import flightdiscovery.paull.domain.model.Airport;
 import flightdiscovery.paull.domain.model.FlightRoute;
+import flightdiscovery.paull.domain.model.FuelPrice;
+import flightdiscovery.paull.domain.model.FuelPriceSource;
 import flightdiscovery.paull.domain.model.RouteType;
 import flightdiscovery.paull.domain.model.VisualWaypoint;
 import flightdiscovery.paull.domain.model.Waypoint;
@@ -35,9 +37,15 @@ public final class MockFlightData {
     private static final List<Airport> AIRPORTS = List.of(GCLP, GCTS, GCXO);
 
     private static final List<Aircraft> AIRCRAFT = List.of(
-            new Aircraft("cessna-172", "Cessna 172", 226.0, 34.0, 151.0),
-            new Aircraft("piper-pa-28", "Piper PA-28", 215.0, 36.0, 182.0),
-            new Aircraft("diamond-da40", "Diamond DA40", 235.0, 28.0, 151.0)
+            new Aircraft("cessna-172", "Cessna 172", 226.0, 34.0, "AVGAS_100LL", 4.4, 45),
+            new Aircraft("piper-pa-28", "Piper PA-28", 215.0, 36.0, "AVGAS_100LL", 5.0, 45),
+            new Aircraft("diamond-da40", "Diamond DA40", 235.0, 28.0, "JET_A1", 5.4, 45)
+    );
+
+    private static final List<FuelPrice> FUEL_PRICES = List.of(
+            new FuelPrice("AVGAS_100LL", 2.85, FuelPriceSource.MOCK),
+            new FuelPrice("JET_A1", 1.95, FuelPriceSource.MOCK),
+            new FuelPrice("MOGAS", 1.75, FuelPriceSource.MOCK)
     );
 
     private static final List<VisualWaypoint> VISUAL_WAYPOINTS = List.of(
@@ -173,6 +181,10 @@ public final class MockFlightData {
 
     public static List<Aircraft> aircraft() {
         return AIRCRAFT;
+    }
+
+    public static List<FuelPrice> fuelPrices() {
+        return FUEL_PRICES;
     }
 
     public static List<FlightRoute> routes() {

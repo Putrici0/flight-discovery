@@ -66,6 +66,19 @@ label {
   font-weight: 700;
 }
 
+.aircraft-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: -4px 0 0;
+}
+
+.aircraft-summary div {
+  border-radius: 6px;
+  background: #f4f7fa;
+  padding: 9px;
+}
+
 input,
 select {
   width: 100%;
@@ -384,6 +397,7 @@ dd {
     grid-template-columns: 1fr;
   }
 
+  .aircraft-summary,
   .metrics-grid,
   .score-grid,
   .weather-grid,
@@ -393,6 +407,7 @@ dd {
 }
 
 @media (max-width: 440px) {
+  .aircraft-summary,
   .metrics-grid,
   .score-grid,
   .weather-grid,

@@ -21,10 +21,13 @@ import flightdiscovery.paull.domain.calculation.RouteCalculationService;
 import flightdiscovery.paull.domain.model.Aircraft;
 import flightdiscovery.paull.domain.model.Airport;
 import flightdiscovery.paull.domain.model.FlightRoute;
+import flightdiscovery.paull.domain.model.FuelPrice;
+import flightdiscovery.paull.domain.model.FuelPriceSource;
 import flightdiscovery.paull.domain.model.RouteScore;
 import flightdiscovery.paull.domain.model.WeatherData;
 import flightdiscovery.paull.domain.repository.MockAircraftRepository;
 import flightdiscovery.paull.domain.repository.MockAirportRepository;
+import flightdiscovery.paull.domain.repository.MockFuelPriceRepository;
 import flightdiscovery.paull.domain.repository.MockRouteRepository;
 import flightdiscovery.paull.domain.scoring.RouteScoringService;
 import flightdiscovery.paull.domain.weather.WeatherService;
@@ -42,6 +45,7 @@ public class RecommendationService {
     private final MockRouteRepository routeRepository;
     private final MockAirportRepository airportRepository;
     private final MockAircraftRepository aircraftRepository;
+    private final MockFuelPriceRepository fuelPriceRepository;
     private final RouteCalculationService routeCalculationService;
     private final RouteScoringService routeScoringService;
     private final RouteCandidateGenerator routeCandidateGenerator;
@@ -51,6 +55,7 @@ public class RecommendationService {
             MockRouteRepository routeRepository,
             MockAirportRepository airportRepository,
             MockAircraftRepository aircraftRepository,
+            MockFuelPriceRepository fuelPriceRepository,
             RouteCalculationService routeCalculationService,
             RouteScoringService routeScoringService,
             RouteCandidateGenerator routeCandidateGenerator,
@@ -59,6 +64,7 @@ public class RecommendationService {
         this.routeRepository = routeRepository;
         this.airportRepository = airportRepository;
         this.aircraftRepository = aircraftRepository;
+        this.fuelPriceRepository = fuelPriceRepository;
         this.routeCalculationService = routeCalculationService;
         this.routeScoringService = routeScoringService;
         this.routeCandidateGenerator = routeCandidateGenerator;
@@ -66,24 +72,30 @@ public class RecommendationService {
     }
 
     public RecommendationResponse recommend(RecommendationRequest request) {
-        double cruiseSpeedKmh = resolveCruiseSpeed(request);
-        double fuelBurnLitersPerHour = resolveFuelBurn(request);
-        double usefulFlightTimeMinutes = usefulFlightTimeMinutes(request);
+        Aircraft aircraft = resolveAircraft(request);
+        double cruiseSpeedKmh = resolveCruiseSpeed(request, aircraft);
+        double fuelBurnLitersPerHour = resolveFuelBurn(request, aircraft);
+        FuelPrice fuelPrice = resolveFuelPrice(request, aircraft);
+        double usefulAvailableTimeMinutes = usefulAvailableTimeMinutes(request, aircraft);
 
         Airport departureAirport = resolveDepartureAirport(request.departureAirport());
         List<FlightRoute> allPredefinedRoutes = routeRepository.findAll();
         List<FlightRoute> predefinedRoutes = routeRepository.findByDepartureAirportCode(departureAirport.code());
-        LOGGER.info("Recommendation diagnostics: predefinedRoutesTotal={} predefinedRoutesForDeparture={} departureAirport={} availableFlightTimeMinutes={} safetyMarginPercent={} usefulFlightTimeMinutes={}",
+        LOGGER.info("Recommendation diagnostics: predefinedRoutesTotal={} predefinedRoutesForDeparture={} departureAirport={} availableFlightTimeMinutes={} recommendedReserveMinutes={} safetyMarginPercent={} usefulAvailableTimeMinutes={} fuelType={} fuelPricePerLiter={} fuelPriceSource={}",
                 allPredefinedRoutes.size(),
                 predefinedRoutes.size(),
                 departureAirport.code(),
                 request.availableFlightTimeMinutes(),
+                aircraft.recommendedReserveMinutes(),
                 request.effectiveSafetyMarginPercent(),
-                round(usefulFlightTimeMinutes));
+                round(usefulAvailableTimeMinutes),
+                fuelPrice.fuelType(),
+                fuelPrice.pricePerLiter(),
+                fuelPrice.source());
 
         RouteGenerationResult generationResult = routeCandidateGenerator.generateWithDebug(
                 departureAirport,
-                usefulFlightTimeMinutes,
+                usefulAvailableTimeMinutes,
                 cruiseSpeedKmh,
                 request.preference()
         );
@@ -96,11 +108,11 @@ public class RecommendationService {
         var scoredRoutes = routesForScoring.stream()
                 .map(route -> new ScoredRoute(
                         route,
-                        toRecommendation(route, request, usefulFlightTimeMinutes, cruiseSpeedKmh, fuelBurnLitersPerHour)
+                        toRecommendation(route, request, usefulAvailableTimeMinutes, cruiseSpeedKmh, fuelBurnLitersPerHour, fuelPrice)
                 ))
                 .toList();
         var usefulTimeViableRoutes = scoredRoutes.stream()
-                .filter(scoredRoute -> isWithinAllowedTime(scoredRoute.recommendation(), usefulFlightTimeMinutes))
+                .filter(scoredRoute -> isWithinAllowedTime(scoredRoute.recommendation(), usefulAvailableTimeMinutes))
                 .toList();
         var viableRecommendations = diverseRecommendations(usefulTimeViableRoutes).stream()
                 .map(ScoredRoute::recommendation)
@@ -190,8 +202,13 @@ public class RecommendationService {
                 ));
     }
 
-    private double usefulFlightTimeMinutes(RecommendationRequest request) {
-        return request.availableFlightTimeMinutes() * (100.0 - request.effectiveSafetyMarginPercent()) / 100.0;
+    private double usefulAvailableTimeMinutes(RecommendationRequest request, Aircraft aircraft) {
+        double availableAfterReserveMinutes = Math.max(
+                0.0,
+                request.availableFlightTimeMinutes() - aircraft.recommendedReserveMinutes()
+        );
+
+        return availableAfterReserveMinutes * (100.0 - request.effectiveSafetyMarginPercent()) / 100.0;
     }
 
     private boolean isWithinAllowedTime(RecommendedRouteResponse recommendation, double availableTimeMinutes) {
@@ -211,13 +228,14 @@ public class RecommendationService {
             RecommendationRequest request,
             double usefulFlightTimeMinutes,
             double cruiseSpeedKmh,
-            double fuelBurnLitersPerHour
+            double fuelBurnLitersPerHour,
+            FuelPrice fuelPrice
     ) {
         double approximateDistanceKm = routeCalculationService.totalDistanceKm(route);
         double estimatedTimeHours = routeCalculationService.estimatedTimeHours(approximateDistanceKm, cruiseSpeedKmh);
         double estimatedTimeMinutes = routeCalculationService.estimatedTimeMinutes(estimatedTimeHours);
         double estimatedFuelLiters = routeCalculationService.estimatedFuelLiters(estimatedTimeMinutes, fuelBurnLitersPerHour);
-        double estimatedCost = routeCalculationService.estimatedCost(estimatedFuelLiters, request.fuelPricePerLiter());
+        double estimatedCost = routeCalculationService.estimatedCost(estimatedFuelLiters, fuelPrice.pricePerLiter());
         WeatherData weatherData = weatherService.weatherFor(route);
         RouteScore score = routeScoringService.score(
                 route,
@@ -238,6 +256,8 @@ public class RecommendationService {
                 round(estimatedTimeMinutes),
                 round(estimatedTimeHours),
                 roundOneDecimal(estimatedFuelLiters),
+                fuelPrice.pricePerLiter(),
+                fuelPrice.source().name(),
                 roundTwoDecimals(estimatedCost),
                 score.totalScore(),
                 score.weatherScore(),
@@ -269,29 +289,39 @@ public class RecommendationService {
         return warnings;
     }
 
-    private double resolveCruiseSpeed(RecommendationRequest request) {
+    private Aircraft resolveAircraft(RecommendationRequest request) {
+        return aircraftRepository.findById(request.aircraftId())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "aircraftId must match a known aircraft"
+                ));
+    }
+
+    private double resolveCruiseSpeed(RecommendationRequest request, Aircraft aircraft) {
         if (request.cruiseSpeedKmh() != null) {
             return request.cruiseSpeedKmh();
         }
 
-        return aircraftRepository.findById(request.aircraftId())
-                .map(Aircraft::cruiseSpeedKmh)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST,
-                        "aircraftId must match a known aircraft when cruiseSpeedKmh is not provided"
-                ));
+        return aircraft.cruiseSpeedKmh();
     }
 
-    private double resolveFuelBurn(RecommendationRequest request) {
+    private double resolveFuelBurn(RecommendationRequest request, Aircraft aircraft) {
         if (request.fuelBurnLitersPerHour() != null) {
             return request.fuelBurnLitersPerHour();
         }
 
-        return aircraftRepository.findById(request.aircraftId())
-                .map(Aircraft::fuelBurnLitersPerHour)
+        return aircraft.fuelBurnLitersPerHour();
+    }
+
+    private FuelPrice resolveFuelPrice(RecommendationRequest request, Aircraft aircraft) {
+        if (request.fuelPricePerLiter() != null) {
+            return new FuelPrice(aircraft.fuelType(), request.fuelPricePerLiter(), FuelPriceSource.MANUAL);
+        }
+
+        return fuelPriceRepository.findByFuelType(aircraft.fuelType())
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.BAD_REQUEST,
-                        "aircraftId must match a known aircraft when fuelBurnLitersPerHour is not provided"
+                        "aircraft fuelType must have a configured mock fuel price"
                 ));
     }
 

@@ -5,6 +5,8 @@ public record Aircraft(
         String name,
         double cruiseSpeedKmh,
         double fuelBurnLitersPerHour,
-        double usableFuelLiters
+        String fuelType,
+        double maxEnduranceHours,
+        int recommendedReserveMinutes
 ) {
 }

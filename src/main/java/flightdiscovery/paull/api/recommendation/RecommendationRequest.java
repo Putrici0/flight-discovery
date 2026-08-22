@@ -21,7 +21,7 @@ public record RecommendationRequest(
         Double fuelBurnLitersPerHour,
 
         @DecimalMin(value = "0.0", message = "fuelPricePerLiter must be greater than or equal to 0")
-        double fuelPricePerLiter,
+        Double fuelPricePerLiter,
 
         @NotBlank(message = "preference is required")
         String preference,

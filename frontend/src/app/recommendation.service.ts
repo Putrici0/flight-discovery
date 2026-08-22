@@ -8,7 +8,7 @@ export interface RecommendationRequest {
   aircraftId: string;
   cruiseSpeedKmh: number;
   fuelBurnLitersPerHour: number;
-  fuelPricePerLiter: number;
+  fuelPricePerLiter: number | null;
   preference: string;
   safetyMarginPercent: number;
 }
@@ -31,6 +31,8 @@ export interface RecommendedRoute {
   estimatedTimeMinutes: number;
   estimatedTimeHours: number;
   estimatedFuelLiters: number;
+  fuelPricePerLiter: number;
+  fuelPriceSource: 'MANUAL' | 'MOCK';
   estimatedCost: number;
   totalScore: number;
   weatherScore?: number;
