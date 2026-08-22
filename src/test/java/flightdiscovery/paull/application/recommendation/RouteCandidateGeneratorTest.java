@@ -137,8 +137,12 @@ class RouteCandidateGeneratorTest {
     @Test
     void threeOrMoreWaypointGenerationCreatesAtMostFortyCandidatesBeforeTimeFiltering() {
         var result = generator.generateWithDebug(MockFlightData.GCLP, 180, 226.0, "coast");
+        int compatibleWaypointCount = result.compatibleWaypointCount();
+        int maximumGeneratedCandidates = compatibleWaypointCount
+                + compatibleWaypointCount * (compatibleWaypointCount - 1) / 2
+                + 40;
 
-        assertEquals(250, result.generatedCandidateRoutes());
+        assertTrue(result.generatedCandidateRoutes() <= maximumGeneratedCandidates);
     }
 
     @Test
@@ -281,6 +285,15 @@ class RouteCandidateGeneratorTest {
 
         assertTrue(coastRoutes > routes.size() / 2);
         assertTrue(coastRoutes < routes.size());
+    }
+
+    @Test
+    void coastPreferenceGeneratesLongerCoastalRoutesWhenEnoughTimeIsAvailable() {
+        var routes = generator.generate(MockFlightData.GCLP, 180, 226.0, "coast");
+
+        assertTrue(routes.stream()
+                .filter(route -> route.tags().contains("coast"))
+                .anyMatch(route -> estimatedTimeMinutes(route, 226.0) >= 90.0));
     }
 
     @Test

@@ -230,6 +230,30 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     return availableAfterReserveMinutes * (100 - this.form.safetyMarginPercent) / 100;
   }
 
+  protected routeUsefulTimeUsagePercent(route: RecommendedRoute): number {
+    const usefulTimeMinutes = this.usefulFlightTimeMinutes();
+
+    if (usefulTimeMinutes <= 0) {
+      return 0;
+    }
+
+    return route.estimatedTimeMinutes / usefulTimeMinutes * 100;
+  }
+
+  protected routeTimeUsageText(route: RecommendedRoute): string {
+    const usagePercent = Math.round(this.routeUsefulTimeUsagePercent(route));
+
+    if (usagePercent < 50) {
+      return `Ruta demasiado corta: usa el ${usagePercent}% de tu tiempo util disponible.`;
+    }
+
+    return `Esta ruta usa el ${usagePercent}% de tu tiempo util disponible.`;
+  }
+
+  protected isTooShortByUsefulTime(route: RecommendedRoute): boolean {
+    return this.routeUsefulTimeUsagePercent(route) < 50;
+  }
+
   protected applyAircraftDefaults(): void {
     const aircraft = this.aircraftOptions.find((option) => option.id === this.form.aircraftId);
 

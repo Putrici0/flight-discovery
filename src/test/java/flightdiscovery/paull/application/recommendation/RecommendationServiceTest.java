@@ -24,6 +24,8 @@ import flightdiscovery.paull.domain.weather.MockWeatherService;
 
 class RecommendationServiceTest {
 
+    private static final int CESSNA_RECOMMENDED_RESERVE_MINUTES = 45;
+
     private final RecommendationService recommendationService = new RecommendationService(
             new MockRouteRepository(),
             new MockAirportRepository(),
@@ -46,6 +48,42 @@ class RecommendationServiceTest {
 
         assertTrue(longTimeRecommendations.stream()
                 .anyMatch(recommendation -> recommendation.estimatedTimeMinutes() > longestShortRecommendation));
+    }
+
+    @Test
+    void recommendsShortRoutesWhenThirtyUsefulMinutesAreAvailable() {
+        double usefulTimeMinutes = 30.0;
+        var recommendations = recommendationService.recommend(requestWithUsefulTime((int) usefulTimeMinutes)).recommendations();
+
+        assertFalse(recommendations.isEmpty());
+        assertTrue(recommendations.stream()
+                .allMatch(recommendation -> recommendation.estimatedTimeMinutes() <= usefulTimeMinutes * 1.25));
+    }
+
+    @Test
+    void prioritizesRoutesNearNinetyToOneHundredTenMinutesWhenTwoHoursAreAvailable() {
+        var recommendations = recommendationService.recommend(requestWithUsefulTime(120)).recommendations();
+        var topThreeRecommendations = recommendations.subList(0, Math.min(3, recommendations.size()));
+        long nearTargetRecommendations = topThreeRecommendations.stream()
+                .filter(recommendation -> recommendation.estimatedTimeMinutes() >= 90.0)
+                .filter(recommendation -> recommendation.estimatedTimeMinutes() <= 110.0)
+                .count();
+
+        assertFalse(topThreeRecommendations.isEmpty());
+        assertTrue(nearTargetRecommendations >= Math.min(2, topThreeRecommendations.size()));
+    }
+
+    @Test
+    void recommendationsForThreeHoursIncludeLongerRoutesThanRecommendationsForOneHour() {
+        var oneHourRecommendations = recommendationService.recommend(requestWithUsefulTime(60)).recommendations();
+        var threeHourRecommendations = recommendationService.recommend(requestWithUsefulTime(180)).recommendations();
+        double longestOneHourRecommendation = oneHourRecommendations.stream()
+                .mapToDouble(RecommendedRouteResponse::estimatedTimeMinutes)
+                .max()
+                .orElseThrow();
+
+        assertTrue(threeHourRecommendations.stream()
+                .anyMatch(recommendation -> recommendation.estimatedTimeMinutes() > longestOneHourRecommendation));
     }
 
     @Test
@@ -171,6 +209,19 @@ class RecommendationServiceTest {
 
         assertTrue(recommendations.stream()
                 .anyMatch(recommendation -> recommendation.routeDurationCategory() == RouteDurationCategory.TOO_SHORT));
+    }
+
+    @Test
+    void shortPreferenceDoesNotPenalizeShortRoutes() {
+        var tooShortRecommendations = recommendationService.recommend(requestWithPreferenceAndUsefulTime("short", 120))
+                .recommendations()
+                .stream()
+                .filter(recommendation -> recommendation.routeDurationCategory() == RouteDurationCategory.TOO_SHORT)
+                .toList();
+
+        assertFalse(tooShortRecommendations.isEmpty());
+        assertTrue(tooShortRecommendations.stream()
+                .allMatch(recommendation -> recommendation.scoreBreakdown().timeFitScore() == 85.0));
     }
 
     @Test
@@ -391,6 +442,28 @@ class RecommendationServiceTest {
     }
 
     @Test
+    void tooShortRoutesDoNotDominateTopFiveWhenAlternativesExist() {
+        var request = requestWithUsefulTime(120);
+        var debug = recommendationService.debug(request);
+        boolean hasNonTooShortAlternatives = debug.candidates().stream()
+                .filter(candidate -> candidate.totalScore() != null)
+                .anyMatch(candidate -> durationCategory(candidate.estimatedTimeMinutes(), debug.usefulAvailableTimeMinutes())
+                        != RouteDurationCategory.TOO_SHORT);
+        var topFiveRecommendations = recommendationService.recommend(request)
+                .recommendations()
+                .stream()
+                .limit(5)
+                .toList();
+        long tooShortRecommendations = topFiveRecommendations.stream()
+                .filter(recommendation -> recommendation.routeDurationCategory() == RouteDurationCategory.TOO_SHORT)
+                .count();
+
+        if (hasNonTooShortAlternatives) {
+            assertTrue(tooShortRecommendations <= topFiveRecommendations.size() / 2);
+        }
+    }
+
+    @Test
     void avoidsReturningOnlyOnePrimaryTagWhenAlternativesExist() {
         var recommendations = recommendationService.recommend(requestWithAvailableTime(120)).recommendations();
 
@@ -410,6 +483,10 @@ class RecommendationServiceTest {
         );
     }
 
+    private RecommendationRequest requestWithUsefulTime(int usefulAvailableTimeMinutes) {
+        return requestWithAvailableTime(usefulAvailableTimeMinutes + CESSNA_RECOMMENDED_RESERVE_MINUTES);
+    }
+
     private RecommendationRequest requestWithSafetyMargin(int availableTimeMinutes, Integer safetyMarginPercent) {
         return new RecommendationRequest(
                 "GCLP",
@@ -427,6 +504,19 @@ class RecommendationServiceTest {
         return new RecommendationRequest(
                 "GCLP",
                 120,
+                "cessna-172",
+                226.0,
+                34.0,
+                2.3,
+                preference,
+                0
+        );
+    }
+
+    private RecommendationRequest requestWithPreferenceAndUsefulTime(String preference, int usefulAvailableTimeMinutes) {
+        return new RecommendationRequest(
+                "GCLP",
+                usefulAvailableTimeMinutes + CESSNA_RECOMMENDED_RESERVE_MINUTES,
                 "cessna-172",
                 226.0,
                 34.0,

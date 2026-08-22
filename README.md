@@ -2,6 +2,8 @@
 
 Flight Discovery es un MVP para recomendar rutas aereas recreativas a pilotos privados usando datos mock. Parte de un aeropuerto de salida y combina tiempo disponible, avion, consumo, precio de combustible, meteorologia simulada y preferencia de ruta para proponer rutas viables y atractivas.
 
+El tiempo disponible se usa como duracion objetivo, no solo como limite maximo. El backend calcula un tiempo util, busca rutas cercanas a ese objetivo y penaliza las rutas demasiado cortas cuando el usuario no pide explicitamente rutas cortas.
+
 Este proyecto no debe usarse para planificacion aeronautica profesional. Todavia no integra meteorologia real, espacio aereo, NOTAM, performance real de aeronaves ni navegacion en tiempo real.
 
 ## Requisitos
@@ -121,6 +123,7 @@ Respuesta resumida:
       "approximateDistanceKm": 120.5,
       "estimatedTimeMinutes": 32.0,
       "estimatedTimeHours": 0.53,
+      "routeDurationCategory": "GOOD_FIT",
       "estimatedFuelLiters": 18.1,
       "fuelPricePerLiter": 2.3,
       "fuelPriceSource": "MANUAL",
@@ -160,7 +163,7 @@ Endpoint de diagnostico para desarrollo. Devuelve la request normalizada, avion 
 
 Campos destacados:
 
-- `usefulAvailableTimeMinutes`: tiempo disponible despues de reserva y margen de seguridad.
+- `usefulAvailableTimeMinutes`: tiempo disponible despues de reserva y margen de seguridad. Es la base para decidir si una ruta cabe y tambien para calcular la duracion objetivo.
 - `candidates`: candidatas evaluadas y descartadas, con `totalScore`, `timeFitScore`, `costScore`, fase de descarte y motivo cuando aplica.
 - `discards`: descartes por generacion, filtro de tiempo o seleccion final.
 - `recommendations`: recomendaciones finales.
@@ -171,16 +174,20 @@ Campos destacados:
 - Tiempo: distancia / velocidad de crucero, expresado en minutos y horas.
 - Combustible: tiempo en horas * consumo por hora.
 - Coste: combustible estimado * precio por litro.
-- Tiempo util: tiempo disponible menos reserva recomendada del avion y margen de seguridad.
-- Generacion dinamica: se crean rutas circulares de uno o dos waypoints visuales compatibles con el aeropuerto de salida.
+- `usefulAvailableTimeMinutes`: tiempo disponible menos reserva recomendada del avion y margen de seguridad.
+- `targetDurationMinutes`: duracion objetivo para ranking y scoring. Se calcula como `usefulAvailableTimeMinutes * 0.85`, por lo que 120 minutos utiles priorizan rutas cercanas a 102 minutos.
+- Generacion dinamica: se crean rutas circulares con 1, 2 y, cuando hay al menos 90 minutos utiles, 3 o mas waypoints visuales compatibles con el aeropuerto de salida.
 - Bandas de duracion para candidatas generadas:
   - `short`: 30% a 50% del tiempo util.
   - `medium`: 50% a 75%.
   - `long`: 75% a 100%.
   - `extended`: 100% a 125%, permitidas con warning.
-- Scoring: combina `weatherScore` simulado, `timeFitScore`, `preferenceScore`, interes visual y coste. El `totalScore` esta entre 0 y 100 y las rutas se ordenan de mayor a menor puntuacion.
-- `timeFitScore`: trata el tiempo util como duracion objetivo. El objetivo es `usefulAvailableTimeMinutes * 0.85`; las rutas cercanas a ese valor puntuan mejor.
-- Penalizacion de rutas demasiado cortas: si `preference` no es `short`, las rutas por debajo del 40% del tiempo util penalizan mucho y las de 40%-60% penalizan moderadamente.
+- Generacion por bandas: el generador intenta conservar candidatas `long`, `medium`, `extended` y `short` para evitar que la seleccion quede dominada por rutas muy cortas. Tambien mantiene variedad de tipos de ruta.
+- Scoring: combina `weatherScore` simulado, `timeFitScore`, `preferenceScore`, interes visual y coste. El `totalScore` esta entre 0 y 100.
+- `timeFitScore`: puntua mejor las rutas cercanas a `targetDurationMinutes`, permite rutas hasta el 125% del tiempo util y descarta el encaje temporal por encima de ese margen.
+- Penalizacion de rutas demasiado cortas: si `preference` no es `short`, las rutas por debajo del 40% del tiempo util penalizan mucho y las de 40%-60% penalizan moderadamente. Si `preference` es `short`, esas rutas no se penalizan por duracion.
+- `routeDurationCategory`: clasifica cada recomendacion como `TOO_SHORT`, `SHORT`, `GOOD_FIT`, `LONG`, `SLIGHTLY_OVER_TIME` o `TOO_LONG` segun la proporcion entre `estimatedTimeMinutes` y `usefulAvailableTimeMinutes`.
+- Seleccion final: prioriza buen ajuste temporal, preferencia y score; las rutas `TOO_SHORT` no deben dominar el top 5 cuando hay alternativas.
 - Tolerancia de tiempo: se permiten rutas hasta 125% del tiempo util; por encima se descartan.
 - Explicacion: indica si la ruta aprovecha poco, bien o demasiado el tiempo disponible.
 

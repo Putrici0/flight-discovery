@@ -191,6 +191,24 @@ select:focus {
   text-transform: uppercase;
 }
 
+.duration-category {
+  border: 1px solid #9cc7c4;
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: #174a48;
+  background: #d8f0ed;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.duration-category.too-short {
+  border-color: #f2c7ad;
+  color: #7a2e0e;
+  background: #fed7aa;
+}
+
 .detail-header {
   display: flex;
   justify-content: space-between;
@@ -209,6 +227,22 @@ select:focus {
 .selected-detail p {
   margin-bottom: 12px;
   color: #475467;
+}
+
+.time-usage-note {
+  border-left: 4px solid #1f6f6d;
+  margin: 10px 0 12px;
+  padding: 8px 10px;
+  color: #174a48;
+  background: #eef8f6;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.time-usage-note.too-short {
+  border-left-color: #d9480f;
+  color: #7a2e0e;
+  background: #fff7ed;
 }
 
 .selected-detail dl,

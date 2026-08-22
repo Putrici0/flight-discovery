@@ -156,17 +156,25 @@
               <div class="title-row">
                 <h3>{{ route.name }}</h3>
                 <span class="route-type">{{ routeTypeLabel(route.routeType) }}</span>
+                <span
+                  class="duration-category"
+                  [class.too-short]="isTooShortByUsefulTime(route)"
+                >
+                  {{ route.routeDurationCategory }}
+                </span>
               </div>
               <p>{{ route.explanation }}</p>
+              <p
+                class="time-usage-note"
+                [class.too-short]="isTooShortByUsefulTime(route)"
+              >
+                {{ routeTimeUsageText(route) }}
+              </p>
             </div>
             <strong>{{ route.totalScore | number:'1.0-1' }}</strong>
           </header>
 
           <dl class="metrics-grid">
-            <div>
-              <dt>Duracion estimada</dt>
-              <dd>{{ route.estimatedTimeMinutes | number:'1.0-0' }} min</dd>
-            </div>
             <div>
               <dt>Tiempo disponible</dt>
               <dd>{{ form.availableFlightTimeMinutes }} min</dd>
@@ -174,6 +182,14 @@
             <div>
               <dt>Tiempo util</dt>
               <dd>{{ usefulFlightTimeMinutes() | number:'1.0-0' }} min</dd>
+            </div>
+            <div>
+              <dt>Duracion estimada</dt>
+              <dd>{{ route.estimatedTimeMinutes | number:'1.0-0' }} min</dd>
+            </div>
+            <div>
+              <dt>Uso tiempo util</dt>
+              <dd>{{ routeUsefulTimeUsagePercent(route) | number:'1.0-0' }}%</dd>
             </div>
             <div>
               <dt>Categoria duracion</dt>
@@ -272,15 +288,23 @@
             <div class="title-row">
               <h3>{{ route.name }}</h3>
               <span class="route-type">{{ routeTypeLabel(route.routeType) }}</span>
+              <span
+                class="duration-category"
+                [class.too-short]="isTooShortByUsefulTime(route)"
+              >
+                {{ route.routeDurationCategory }}
+              </span>
             </div>
             <strong>{{ route.totalScore | number:'1.0-1' }}</strong>
           </header>
           <p>{{ route.description }}</p>
+          <p
+            class="time-usage-note"
+            [class.too-short]="isTooShortByUsefulTime(route)"
+          >
+            {{ routeTimeUsageText(route) }}
+          </p>
           <dl class="metrics-grid">
-            <div>
-              <dt>Duracion estimada</dt>
-              <dd>{{ route.estimatedTimeMinutes | number:'1.0-0' }} min</dd>
-            </div>
             <div>
               <dt>Tiempo disponible</dt>
               <dd>{{ form.availableFlightTimeMinutes }} min</dd>
@@ -288,6 +312,14 @@
             <div>
               <dt>Tiempo util</dt>
               <dd>{{ usefulFlightTimeMinutes() | number:'1.0-0' }} min</dd>
+            </div>
+            <div>
+              <dt>Duracion estimada</dt>
+              <dd>{{ route.estimatedTimeMinutes | number:'1.0-0' }} min</dd>
+            </div>
+            <div>
+              <dt>Uso tiempo util</dt>
+              <dd>{{ routeUsefulTimeUsagePercent(route) | number:'1.0-0' }}%</dd>
             </div>
             <div>
               <dt>Categoria duracion</dt>
