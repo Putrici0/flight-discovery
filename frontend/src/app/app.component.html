@@ -188,6 +188,14 @@
               <dd>{{ route.estimatedTimeMinutes | number:'1.0-0' }} min</dd>
             </div>
             <div>
+              <dt>Tiempo base</dt>
+              <dd>{{ (route.baseFlightTimeMinutes ?? route.estimatedTimeMinutes) | number:'1.0-0' }} min</dd>
+            </div>
+            <div>
+              <dt>Observacion escenica</dt>
+              <dd>{{ (route.sightseeingTimeMinutes ?? 0) | number:'1.0-0' }} min</dd>
+            </div>
+            <div>
               <dt>Uso tiempo util</dt>
               <dd>{{ routeUsefulTimeUsagePercent(route) | number:'1.0-0' }}%</dd>
             </div>
@@ -316,6 +324,14 @@
             <div>
               <dt>Duracion estimada</dt>
               <dd>{{ route.estimatedTimeMinutes | number:'1.0-0' }} min</dd>
+            </div>
+            <div>
+              <dt>Tiempo base</dt>
+              <dd>{{ (route.baseFlightTimeMinutes ?? route.estimatedTimeMinutes) | number:'1.0-0' }} min</dd>
+            </div>
+            <div>
+              <dt>Observacion escenica</dt>
+              <dd>{{ (route.sightseeingTimeMinutes ?? 0) | number:'1.0-0' }} min</dd>
             </div>
             <div>
               <dt>Uso tiempo util</dt>

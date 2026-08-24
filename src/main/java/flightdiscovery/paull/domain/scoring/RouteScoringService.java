@@ -28,6 +28,9 @@ public class RouteScoringService {
                 + scenicScore * 0.25
                 + preferenceScore * 0.10
                 + costScore * 0.05);
+        if (isInterIslandRoute(route) && !isInterIslandPreference(preference)) {
+            totalScore = clampScore(totalScore - 35.0);
+        }
 
         return new RouteScore(
                 round(normalizedWeatherScore),
@@ -128,5 +131,23 @@ public class RouteScoringService {
 
     private boolean isShortPreference(String preference) {
         return preference != null && preference.trim().equalsIgnoreCase("short");
+    }
+
+    private boolean isInterIslandRoute(FlightRoute route) {
+        return route.tags().stream()
+                .anyMatch(tag -> tag.equalsIgnoreCase("inter-island") || tag.equalsIgnoreCase("islands"));
+    }
+
+    private boolean isInterIslandPreference(String preference) {
+        if (preference == null || preference.isBlank()) {
+            return false;
+        }
+
+        String normalizedPreference = preference.trim().toLowerCase();
+
+        return normalizedPreference.equals("inter-island")
+                || normalizedPreference.equals("islands")
+                || normalizedPreference.equals("cross-country")
+                || normalizedPreference.equals("adventure");
     }
 }

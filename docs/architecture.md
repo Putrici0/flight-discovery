@@ -23,8 +23,8 @@ Capas principales:
 
 1. `RecommendationController` valida la request.
 2. `RecommendationService` resuelve aeropuerto, avion, velocidad, consumo, precio de combustible y tiempo util.
-3. `usefulAvailableTimeMinutes` se calcula restando la reserva recomendada del avion y aplicando el margen de seguridad. Este valor no se usa solo como limite maximo: tambien define la duracion objetivo de las rutas.
-4. `targetDurationMinutes` es el objetivo temporal interno para scoring y ordenacion. Actualmente equivale a `usefulAvailableTimeMinutes * 0.85`, de forma que una busqueda de 120 minutos utiles favorece rutas alrededor de 102 minutos.
+3. `usefulAvailableTimeMinutes` se calcula restando la reserva recomendada del avion y aplicando el margen de seguridad. Este valor funciona como limite operativo y orientacion, no como obligacion de rellenar minutos.
+4. `targetDurationMinutes` es una referencia interna para scoring temporal. Actualmente equivale a `usefulAvailableTimeMinutes * 0.85`, pero la seleccion final puede preferir rutas locales mas cortas cuando tienen mas sentido recreativo.
 5. `RouteCandidateGenerator` crea rutas circulares generadas con 1, 2 y, cuando hay al menos 90 minutos utiles, 3 o mas waypoints visuales compatibles con el aeropuerto.
 6. Las rutas generadas se filtran por tolerancia maxima de 125% del tiempo util.
 7. Las candidatas se clasifican por bandas de duracion:
@@ -32,9 +32,9 @@ Capas principales:
    - `medium`: 50% - 75%.
    - `long`: 75% - 100%.
    - `extended`: 100% - 125%.
-8. El generador selecciona hasta 30 candidatas buscando variedad de bandas y tipos de ruta, pero priorizando cercania al objetivo temporal del 85%.
+8. El generador selecciona hasta 30 candidatas buscando variedad de bandas y tipos de ruta. Cuando la preferencia no es interinsular, las rutas locales se ordenan por delante de travesias entre islas.
 9. `RouteScoringService` calcula `weatherScore`, `timeFitScore`, `preferenceScore`, `scenicScore`, `costScore` y `totalScore`.
-10. `RecommendationService` calcula `routeDurationCategory`, aplica diversidad final, ordena por prioridad temporal, preferencia y score, y devuelve hasta 5 recomendaciones.
+10. `RecommendationService` calcula tiempo base, tiempo de observacion escenica local, `routeDurationCategory`, diversidad final y devuelve hasta 5 recomendaciones.
 11. Las rutas que superan el tiempo util pero no el 125% se permiten con warning.
 
 ## Scoring
@@ -57,13 +57,15 @@ targetDurationMinutes = usefulAvailableTimeMinutes * 0.85
 
 Las rutas entre 70% y 100% del tiempo util puntuan alto, con maximo cerca del 85%. Las rutas entre 100% y 125% se permiten pero se penalizan. Por encima de 125% se descartan.
 
+El `totalScore` penaliza rutas con tag `inter-island` salvo que la preferencia sea `inter-island`, `islands`, `cross-country` o `adventure`. Ademas, la seleccion final intenta llenar primero el top 5 con rutas locales; las interinsulares se usan como categoria especial, no como forma por defecto de consumir tiempo.
+
 Las rutas demasiado cortas se tratan de forma explicita:
 
 - Si usan menos del 40% de `usefulAvailableTimeMinutes`, su `routeDurationCategory` es `TOO_SHORT`.
 - Si usan entre 40% y 70%, se clasifican como `SHORT`.
 - Si `preference` no es `short`, las rutas por debajo del 40% reciben una penalizacion fuerte en `timeFitScore`, y las que estan entre 40% y 60% una penalizacion moderada.
 - Si `preference` es `short`, las rutas cortas no se penalizan por duracion y reciben un `timeFitScore` alto.
-- En la seleccion final, las rutas `TOO_SHORT` no deben dominar el top 5 cuando existen alternativas de mejor ajuste temporal.
+- En la seleccion final, una ruta local corta puede superar a una travesia entre islas si la alternativa larga solo mejora el encaje temporal.
 
 `routeDurationCategory` resume como usa la ruta el tiempo util:
 
@@ -83,6 +85,8 @@ Las rutas demasiado cortas se tratan de forma explicita:
 - 3 o mas waypoints: disponibles cuando `usefulAvailableTimeMinutes` es al menos 90 minutos, con un limite de candidatos antes del filtrado temporal para contener la combinatoria.
 
 La generacion usa bandas de duracion para que el conjunto de candidatas no quede sesgado hacia rutas muy cortas. Para cada busqueda intenta conservar rutas `long`, `medium`, `extended` y `short`, y despues rellena con las mejores candidatas restantes. Cuando hay una preferencia como `coast` o `mountain`, reserva la mayoria de las candidatas para rutas que coinciden con la preferencia, pero mantiene alternativas para diversidad.
+
+Las rutas locales de alto valor visual pueden recibir `sightseeingTimeMinutes`: minutos explicitos de observacion escenica. No aumentan la distancia; aumentan el tiempo estimado, combustible y coste de forma transparente. Los limites actuales son 12 minutos por waypoint, 30 minutos por ruta y un maximo del 30% del tiempo base.
 
 ## Debug
 

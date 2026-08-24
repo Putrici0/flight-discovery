@@ -2,8 +2,10 @@ package flightdiscovery.paull.application.recommendation;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -46,6 +48,11 @@ public class RecommendationService {
     private static final double LOW_TIME_MARGIN_RATIO = 0.90;
     private static final double HIGH_COST_THRESHOLD_EUR = 150.0;
     private static final double HIGH_SHORT_ROUTE_SCORE = 85.0;
+    private static final int MAX_RECOMMENDED_ROUTES_PER_WAYPOINT = 2;
+    private static final double LOCAL_ROUTE_SIGHTSEEING_MIN_SCENIC_SCORE = 85.0;
+    private static final double MAX_SIGHTSEEING_ROUTE_RATIO = 0.30;
+    private static final double MAX_SIGHTSEEING_MINUTES_PER_WAYPOINT = 12.0;
+    private static final double MAX_TOTAL_SIGHTSEEING_MINUTES = 30.0;
     private static final String TIME_DISCARD_REASON = "Estimated route time exceeds useful available time plus 25% tolerance";
     private static final String FINAL_SELECTION_DISCARD_REASON = "Not selected after score and diversity recommendation limit";
 
@@ -286,39 +293,56 @@ public class RecommendationService {
 
     private List<ScoredRoute> diverseRecommendations(List<ScoredRoute> scoredRoutes, String preference) {
         List<ScoredRoute> sortedRoutes = sortedBySelection(scoredRoutes, preference);
+        List<ScoredRoute> primaryRoutes = isInterIslandPreference(preference)
+                ? sortedRoutes
+                : sortedRoutes.stream()
+                .filter(scoredRoute -> !isInterIslandRoute(scoredRoute.route()))
+                .toList();
         List<ScoredRoute> selectedRoutes = new ArrayList<>();
         Set<String> waypointSignatures = new HashSet<>();
+        Map<String, Integer> waypointUsageCounts = new HashMap<>();
         boolean shortPreference = isShortPreference(preference);
 
-        List<ScoredRoute> goodFitRoutes = sortedRoutes.stream()
+        List<ScoredRoute> goodFitRoutes = primaryRoutes.stream()
                 .filter(scoredRoute -> routeDurationCategory(scoredRoute) == RouteDurationCategory.GOOD_FIT)
                 .toList();
-        addDiverseRoutes(goodFitRoutes, selectedRoutes, waypointSignatures, false, false, Math.min(2, goodFitRoutes.size()));
+        addDiverseRoutes(goodFitRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts, false, false, true, Math.min(2, goodFitRoutes.size()));
 
-        List<ScoredRoute> preferredDurationRoutes = sortedRoutes.stream()
+        List<ScoredRoute> preferredDurationRoutes = primaryRoutes.stream()
                 .filter(scoredRoute -> routeDurationCategory(scoredRoute) == RouteDurationCategory.GOOD_FIT
                         || routeDurationCategory(scoredRoute) == RouteDurationCategory.LONG
                         || routeDurationCategory(scoredRoute) == RouteDurationCategory.SLIGHTLY_OVER_TIME
                         || (routeDurationCategory(scoredRoute) == RouteDurationCategory.SHORT && isHighScoringShortRoute(scoredRoute))
                         || (shortPreference && routeDurationCategory(scoredRoute) == RouteDurationCategory.TOO_SHORT))
                 .toList();
-        addDiverseRoutes(preferredDurationRoutes, selectedRoutes, waypointSignatures, true, true, MAX_RECOMMENDATIONS);
-        addDiverseRoutes(preferredDurationRoutes, selectedRoutes, waypointSignatures, true, false, MAX_RECOMMENDATIONS);
-        addDiverseRoutes(preferredDurationRoutes, selectedRoutes, waypointSignatures, false, false, MAX_RECOMMENDATIONS);
+        addDiverseRoutes(preferredDurationRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts, true, true, true, MAX_RECOMMENDATIONS);
+        addDiverseRoutes(preferredDurationRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts, true, false, true, MAX_RECOMMENDATIONS);
+        addDiverseRoutes(preferredDurationRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts, false, false, true, MAX_RECOMMENDATIONS);
+        addDiverseRoutes(preferredDurationRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts, false, false, false, MAX_RECOMMENDATIONS);
 
-        List<ScoredRoute> shortRoutes = sortedRoutes.stream()
+        List<ScoredRoute> shortRoutes = primaryRoutes.stream()
                 .filter(scoredRoute -> routeDurationCategory(scoredRoute) == RouteDurationCategory.SHORT)
                 .toList();
-        addDiverseRoutes(shortRoutes, selectedRoutes, waypointSignatures, false, false, MAX_RECOMMENDATIONS);
+        addDiverseRoutes(shortRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts, false, false, true, MAX_RECOMMENDATIONS);
+        addDiverseRoutes(shortRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts, false, false, false, MAX_RECOMMENDATIONS);
 
-        boolean hasNonTooShortAlternative = sortedRoutes.stream()
+        boolean hasNonTooShortAlternative = primaryRoutes.stream()
                 .anyMatch(scoredRoute -> routeDurationCategory(scoredRoute) != RouteDurationCategory.TOO_SHORT
                         && selectedRoutes.stream().noneMatch(selectedRoute -> selectedRoute.route().id().equals(scoredRoute.route().id())));
         if (shortPreference || !hasNonTooShortAlternative) {
-            List<ScoredRoute> tooShortRoutes = sortedRoutes.stream()
+            List<ScoredRoute> tooShortRoutes = primaryRoutes.stream()
                     .filter(scoredRoute -> routeDurationCategory(scoredRoute) == RouteDurationCategory.TOO_SHORT)
                     .toList();
-            addDiverseRoutes(tooShortRoutes, selectedRoutes, waypointSignatures, false, false, MAX_RECOMMENDATIONS);
+            addDiverseRoutes(tooShortRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts, false, false, true, MAX_RECOMMENDATIONS);
+            addDiverseRoutes(tooShortRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts, false, false, false, MAX_RECOMMENDATIONS);
+        }
+
+        if (!isInterIslandPreference(preference) && selectedRoutes.size() < MAX_RECOMMENDATIONS) {
+            List<ScoredRoute> interIslandRoutes = sortedRoutes.stream()
+                    .filter(scoredRoute -> isInterIslandRoute(scoredRoute.route()))
+                    .toList();
+            addDiverseRoutes(interIslandRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts, false, false, true, MAX_RECOMMENDATIONS);
+            addDiverseRoutes(interIslandRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts, false, false, false, MAX_RECOMMENDATIONS);
         }
 
         return selectedRoutes.stream()
@@ -334,7 +358,8 @@ public class RecommendationService {
 
     private Comparator<ScoredRoute> selectionComparator(String preference) {
         return Comparator
-                .comparingInt((ScoredRoute scoredRoute) -> durationSelectionPriority(scoredRoute, preference))
+                .comparingInt((ScoredRoute scoredRoute) -> routeExperiencePriority(scoredRoute.route(), preference))
+                .thenComparingInt(scoredRoute -> durationSelectionPriority(scoredRoute, preference))
                 .thenComparing(Comparator.comparing(
                         (ScoredRoute scoredRoute) -> routeMatchesPreference(scoredRoute.route(), preference)
                 ).reversed())
@@ -354,6 +379,14 @@ public class RecommendationService {
         };
     }
 
+    private int routeExperiencePriority(FlightRoute route, String preference) {
+        if (!isInterIslandRoute(route) || isInterIslandPreference(preference)) {
+            return 0;
+        }
+
+        return 1;
+    }
+
     private RouteDurationCategory routeDurationCategory(ScoredRoute scoredRoute) {
         return scoredRoute.recommendation().routeDurationCategory();
     }
@@ -366,8 +399,10 @@ public class RecommendationService {
             List<ScoredRoute> sortedRoutes,
             List<ScoredRoute> selectedRoutes,
             Set<String> waypointSignatures,
+            Map<String, Integer> waypointUsageCounts,
             boolean requireNewRouteType,
             boolean requireNewPrimaryTag,
+            boolean limitRepeatedWaypoints,
             int targetSize
     ) {
         for (ScoredRoute candidate : sortedRoutes) {
@@ -378,6 +413,10 @@ public class RecommendationService {
             String waypointSignature = waypointSignature(candidate.route());
             if (waypointSignatures.contains(waypointSignature)
                     || selectedRoutes.stream().anyMatch(selectedRoute -> selectedRoute.route().id().equals(candidate.route().id()))) {
+                continue;
+            }
+
+            if (limitRepeatedWaypoints && usesOverrepresentedWaypoint(candidate.route(), waypointUsageCounts)) {
                 continue;
             }
 
@@ -393,7 +432,20 @@ public class RecommendationService {
 
             selectedRoutes.add(candidate);
             waypointSignatures.add(waypointSignature);
+            recordWaypointUsage(candidate.route(), waypointUsageCounts);
         }
+    }
+
+    private boolean usesOverrepresentedWaypoint(FlightRoute route, Map<String, Integer> waypointUsageCounts) {
+        return route.waypoints().stream()
+                .map(waypoint -> waypoint.name().toLowerCase())
+                .anyMatch(waypoint -> waypointUsageCounts.getOrDefault(waypoint, 0) >= MAX_RECOMMENDED_ROUTES_PER_WAYPOINT);
+    }
+
+    private void recordWaypointUsage(FlightRoute route, Map<String, Integer> waypointUsageCounts) {
+        route.waypoints().stream()
+                .map(waypoint -> waypoint.name().toLowerCase())
+                .forEach(waypoint -> waypointUsageCounts.merge(waypoint, 1, Integer::sum));
     }
 
     private String waypointSignature(FlightRoute route) {
@@ -446,8 +498,11 @@ public class RecommendationService {
             FuelPrice fuelPrice
     ) {
         double approximateDistanceKm = routeCalculationService.totalDistanceKm(route);
-        double estimatedTimeHours = routeCalculationService.estimatedTimeHours(approximateDistanceKm, cruiseSpeedKmh);
-        double estimatedTimeMinutes = routeCalculationService.estimatedTimeMinutes(estimatedTimeHours);
+        double baseFlightTimeHours = routeCalculationService.estimatedTimeHours(approximateDistanceKm, cruiseSpeedKmh);
+        double baseFlightTimeMinutes = routeCalculationService.estimatedTimeMinutes(baseFlightTimeHours);
+        double sightseeingTimeMinutes = sightseeingTimeMinutes(route, baseFlightTimeMinutes, usefulFlightTimeMinutes);
+        double estimatedTimeMinutes = baseFlightTimeMinutes + sightseeingTimeMinutes;
+        double estimatedTimeHours = estimatedTimeMinutes / 60.0;
         double estimatedFuelLiters = routeCalculationService.estimatedFuelLiters(estimatedTimeMinutes, fuelBurnLitersPerHour);
         double estimatedCost = routeCalculationService.estimatedCost(estimatedFuelLiters, fuelPrice.pricePerLiter());
         WeatherData weatherData = weatherService.weatherFor(route);
@@ -467,6 +522,8 @@ public class RecommendationService {
                 route.routeType(),
                 route.waypoints(),
                 round(approximateDistanceKm),
+                round(baseFlightTimeMinutes),
+                round(sightseeingTimeMinutes),
                 round(estimatedTimeMinutes),
                 round(estimatedTimeHours),
                 routeDurationCategory(estimatedTimeMinutes, usefulFlightTimeMinutes),
@@ -481,9 +538,37 @@ public class RecommendationService {
                 weatherData.precipitationProbability(),
                 weatherData.visibilityKm(),
                 score,
-                explanation(route, request, usefulFlightTimeMinutes, estimatedTimeMinutes, estimatedFuelLiters, estimatedCost, score, weatherData),
+                explanation(route, request, usefulFlightTimeMinutes, estimatedTimeMinutes, sightseeingTimeMinutes, estimatedFuelLiters, estimatedCost, score, weatherData),
                 routeWarnings(estimatedTimeMinutes, usefulFlightTimeMinutes, estimatedCost)
         );
+    }
+
+    private double sightseeingTimeMinutes(FlightRoute route, double baseFlightTimeMinutes, double usefulFlightTimeMinutes) {
+        if (isInterIslandRoute(route)
+                || normalizedScenicScore(route) < LOCAL_ROUTE_SIGHTSEEING_MIN_SCENIC_SCORE
+                || usefulFlightTimeMinutes <= 0.0
+                || baseFlightTimeMinutes <= 0.0) {
+            return 0.0;
+        }
+
+        double targetComfortableDurationMinutes = usefulFlightTimeMinutes * 0.70;
+        double missingMinutes = targetComfortableDurationMinutes - baseFlightTimeMinutes;
+        if (missingMinutes <= 0.0) {
+            return 0.0;
+        }
+
+        double waypointLimitMinutes = route.waypoints().size() * MAX_SIGHTSEEING_MINUTES_PER_WAYPOINT;
+        double routeRatioLimitMinutes = baseFlightTimeMinutes * MAX_SIGHTSEEING_ROUTE_RATIO;
+
+        return Math.min(missingMinutes, Math.min(MAX_TOTAL_SIGHTSEEING_MINUTES, Math.min(waypointLimitMinutes, routeRatioLimitMinutes)));
+    }
+
+    private double normalizedScenicScore(FlightRoute route) {
+        if (route.scenicScore() <= 10.0) {
+            return route.scenicScore() * 10.0;
+        }
+
+        return Math.min(100.0, route.scenicScore());
     }
 
     private RouteDurationCategory routeDurationCategory(double estimatedTimeMinutes, double usefulAvailableTimeMinutes) {
@@ -575,6 +660,7 @@ public class RecommendationService {
             RecommendationRequest request,
             double usefulFlightTimeMinutes,
             double estimatedTimeMinutes,
+            double sightseeingTimeMinutes,
             double estimatedFuelLiters,
             double estimatedCost,
             RouteScore score,
@@ -598,12 +684,18 @@ public class RecommendationService {
                 : weatherData.weatherScore() >= 50.0
                 ? "meteorologia simulada aceptable"
                 : "meteorologia simulada desfavorable";
+        String sightseeingFit = sightseeingTimeMinutes > 0.0
+                ? ", incluyendo " + round(sightseeingTimeMinutes) + " minutos de observacion escenica local"
+                : "";
+        String routeExperience = isInterIslandRoute(route) && !isInterIslandPreference(request.preference())
+                ? " Es una travesia entre islas, por lo que se prioriza por debajo de rutas locales salvo preferencia explicita."
+                : "";
 
         return "Esta ruta " + timeFit + ", tiene " + scenicFit
                 + ", " + costFit + ", " + weatherFit + " y " + preferenceFit + ". Se estiman "
-                + round(estimatedTimeMinutes) + " minutos, "
+                + round(estimatedTimeMinutes) + " minutos" + sightseeingFit + ", "
                 + roundOneDecimal(estimatedFuelLiters) + " litros y "
-                + roundTwoDecimals(estimatedCost) + " EUR.";
+                + roundTwoDecimals(estimatedCost) + " EUR." + routeExperience;
     }
 
     private boolean routeMatchesPreference(FlightRoute route, String preference) {
@@ -617,6 +709,24 @@ public class RecommendationService {
 
     private boolean isShortPreference(String preference) {
         return preference != null && preference.trim().equalsIgnoreCase("short");
+    }
+
+    private boolean isInterIslandRoute(FlightRoute route) {
+        return route.tags().stream()
+                .anyMatch(tag -> tag.equalsIgnoreCase("inter-island") || tag.equalsIgnoreCase("islands"));
+    }
+
+    private boolean isInterIslandPreference(String preference) {
+        if (preference == null || preference.isBlank()) {
+            return false;
+        }
+
+        String normalizedPreference = preference.trim().toLowerCase();
+
+        return normalizedPreference.equals("inter-island")
+                || normalizedPreference.equals("islands")
+                || normalizedPreference.equals("cross-country")
+                || normalizedPreference.equals("adventure");
     }
 
     private String timeFitText(double estimatedTimeMinutes, double availableTimeMinutes) {

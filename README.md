@@ -2,7 +2,7 @@
 
 Flight Discovery es un MVP para recomendar rutas aereas recreativas a pilotos privados usando datos mock. Parte de un aeropuerto de salida y combina tiempo disponible, avion, consumo, precio de combustible, meteorologia simulada y preferencia de ruta para proponer rutas viables y atractivas.
 
-El tiempo disponible se usa como duracion objetivo, no solo como limite maximo. El backend calcula un tiempo util, busca rutas cercanas a ese objetivo y penaliza las rutas demasiado cortas cuando el usuario no pide explicitamente rutas cortas.
+El tiempo disponible se usa como limite operativo y orientacion, no como una obligacion de rellenar minutos. El backend calcula un tiempo util, prioriza rutas recreativas locales con valor visual y solo promueve travesias entre islas cuando el usuario las pide explicitamente o faltan alternativas locales.
 
 Este proyecto no debe usarse para planificacion aeronautica profesional. Todavia no integra meteorologia real, espacio aereo, NOTAM, performance real de aeronaves ni navegacion en tiempo real.
 
@@ -121,7 +121,9 @@ Respuesta resumida:
         }
       ],
       "approximateDistanceKm": 120.5,
-      "estimatedTimeMinutes": 32.0,
+      "baseFlightTimeMinutes": 32.0,
+      "sightseeingTimeMinutes": 8.0,
+      "estimatedTimeMinutes": 40.0,
       "estimatedTimeHours": 0.53,
       "routeDurationCategory": "GOOD_FIT",
       "estimatedFuelLiters": 18.1,
@@ -163,7 +165,7 @@ Endpoint de diagnostico para desarrollo. Devuelve la request normalizada, avion 
 
 Campos destacados:
 
-- `usefulAvailableTimeMinutes`: tiempo disponible despues de reserva y margen de seguridad. Es la base para decidir si una ruta cabe y tambien para calcular la duracion objetivo.
+- `usefulAvailableTimeMinutes`: tiempo disponible despues de reserva y margen de seguridad. Es la base para decidir si una ruta cabe y para orientar el encaje temporal sin forzar duraciones artificiales.
 - `candidates`: candidatas evaluadas y descartadas, con `totalScore`, `timeFitScore`, `costScore`, fase de descarte y motivo cuando aplica.
 - `discards`: descartes por generacion, filtro de tiempo o seleccion final.
 - `recommendations`: recomendaciones finales.
@@ -171,11 +173,13 @@ Campos destacados:
 ## Calculos Actuales
 
 - Distancia: Haversine desde el aeropuerto de salida, pasando por waypoints y cerrando de vuelta al aeropuerto.
-- Tiempo: distancia / velocidad de crucero, expresado en minutos y horas.
+- Tiempo base: distancia / velocidad de crucero, expresado en minutos.
+- Tiempo escenico: minutos adicionales explicitos de observacion local sobre puntos de alto interes visual, con limites por ruta y por waypoint.
+- Tiempo estimado: tiempo base + tiempo escenico.
 - Combustible: tiempo en horas * consumo por hora.
 - Coste: combustible estimado * precio por litro.
 - `usefulAvailableTimeMinutes`: tiempo disponible menos reserva recomendada del avion y margen de seguridad.
-- `targetDurationMinutes`: duracion objetivo para ranking y scoring. Se calcula como `usefulAvailableTimeMinutes * 0.85`, por lo que 120 minutos utiles priorizan rutas cercanas a 102 minutos.
+- `targetDurationMinutes`: referencia interna para `timeFitScore`. Se calcula como `usefulAvailableTimeMinutes * 0.85`, pero la seleccion final puede preferir rutas locales mas cortas si son recreativamente mas coherentes.
 - Generacion dinamica: se crean rutas circulares con 1, 2 y, cuando hay al menos 90 minutos utiles, 3 o mas waypoints visuales compatibles con el aeropuerto de salida.
 - Bandas de duracion para candidatas generadas:
   - `short`: 30% a 50% del tiempo util.
@@ -183,13 +187,13 @@ Campos destacados:
   - `long`: 75% a 100%.
   - `extended`: 100% a 125%, permitidas con warning.
 - Generacion por bandas: el generador intenta conservar candidatas `long`, `medium`, `extended` y `short` para evitar que la seleccion quede dominada por rutas muy cortas. Tambien mantiene variedad de tipos de ruta.
-- Scoring: combina `weatherScore` simulado, `timeFitScore`, `preferenceScore`, interes visual y coste. El `totalScore` esta entre 0 y 100.
+- Scoring: combina `weatherScore` simulado, `timeFitScore`, `preferenceScore`, interes visual y coste. Las rutas `inter-island` reciben una penalizacion por defecto salvo preferencia explicita.
 - `timeFitScore`: puntua mejor las rutas cercanas a `targetDurationMinutes`, permite rutas hasta el 125% del tiempo util y descarta el encaje temporal por encima de ese margen.
 - Penalizacion de rutas demasiado cortas: si `preference` no es `short`, las rutas por debajo del 40% del tiempo util penalizan mucho y las de 40%-60% penalizan moderadamente. Si `preference` es `short`, esas rutas no se penalizan por duracion.
 - `routeDurationCategory`: clasifica cada recomendacion como `TOO_SHORT`, `SHORT`, `GOOD_FIT`, `LONG`, `SLIGHTLY_OVER_TIME` o `TOO_LONG` segun la proporcion entre `estimatedTimeMinutes` y `usefulAvailableTimeMinutes`.
-- Seleccion final: prioriza buen ajuste temporal, preferencia y score; las rutas `TOO_SHORT` no deben dominar el top 5 cuando hay alternativas.
+- Seleccion final: prioriza primero rutas locales, despues encaje temporal, preferencia y score. Las rutas entre islas existen, pero no deben superar a buenas rutas locales salvo preferencia `inter-island`, `islands`, `cross-country` o `adventure`.
 - Tolerancia de tiempo: se permiten rutas hasta 125% del tiempo util; por encima se descartan.
-- Explicacion: indica si la ruta aprovecha poco, bien o demasiado el tiempo disponible.
+- Explicacion: indica si la ruta aprovecha poco, bien o demasiado el tiempo disponible, y muestra los minutos de observacion escenica local cuando se han anadido.
 
 ## Datos Mock
 

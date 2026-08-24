@@ -39,6 +39,8 @@ export interface RecommendedRoute {
   routeType?: RouteType;
   waypoints: Waypoint[];
   approximateDistanceKm: number;
+  baseFlightTimeMinutes?: number;
+  sightseeingTimeMinutes?: number;
   estimatedTimeMinutes: number;
   estimatedTimeHours: number;
   routeDurationCategory: RouteDurationCategory;

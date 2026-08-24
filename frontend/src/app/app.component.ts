@@ -117,7 +117,8 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     { value: 'coast', label: 'Costa' },
     { value: 'mountain', label: 'Montana' },
     { value: 'short', label: 'Corta' },
-    { value: 'scenic', label: 'Escenica' }
+    { value: 'scenic', label: 'Escenica' },
+    { value: 'inter-island', label: 'Entre islas' }
   ];
 
   protected recommendations: RecommendedRoute[] = [];
@@ -242,12 +243,16 @@ export class AppComponent implements AfterViewInit, OnDestroy {
 
   protected routeTimeUsageText(route: RecommendedRoute): string {
     const usagePercent = Math.round(this.routeUsefulTimeUsagePercent(route));
+    const sightseeingMinutes = route.sightseeingTimeMinutes ?? 0;
+    const sightseeingText = sightseeingMinutes > 0
+      ? ` Incluye ${Math.round(sightseeingMinutes)} min de observacion escenica local.`
+      : '';
 
     if (usagePercent < 50) {
-      return `Ruta demasiado corta: usa el ${usagePercent}% de tu tiempo util disponible.`;
+      return `Ruta corta: usa el ${usagePercent}% de tu tiempo util disponible.${sightseeingText}`;
     }
 
-    return `Esta ruta usa el ${usagePercent}% de tu tiempo util disponible.`;
+    return `Esta ruta usa el ${usagePercent}% de tu tiempo util disponible.${sightseeingText}`;
   }
 
   protected isTooShortByUsefulTime(route: RecommendedRoute): boolean {

@@ -58,6 +58,30 @@ class RouteCandidateGeneratorTest {
     }
 
     @Test
+    void doesNotUseInterIslandWaypointsUnlessPreferenceRequestsThem() {
+        var routes = generator.generate(MockFlightData.GCLP, 180, 226.0, "coast");
+
+        assertFalse(routes.stream()
+                .flatMap(route -> route.waypoints().stream())
+                .anyMatch(waypoint -> waypoint.name().equals("Isla de Lobos")
+                        || waypoint.name().equals("Costa oeste de Fuerteventura")
+                        || waypoint.name().equals("Costa sur de Lanzarote")
+                        || waypoint.name().equals("Punta de Papagayo")));
+    }
+
+    @Test
+    void usesInterIslandWaypointsWhenPreferenceRequestsThem() {
+        var routes = generator.generate(MockFlightData.GCLP, 180, 226.0, "inter-island");
+
+        assertTrue(routes.stream()
+                .flatMap(route -> route.waypoints().stream())
+                .anyMatch(waypoint -> waypoint.name().equals("Isla de Lobos")
+                        || waypoint.name().equals("Costa oeste de Fuerteventura")
+                        || waypoint.name().equals("Costa sur de Lanzarote")
+                        || waypoint.name().equals("Punta de Papagayo")));
+    }
+
+    @Test
     void oneWaypointRoutesAreCircularFromDepartureToWaypointAndBack() {
         var route = generator.generate(MockFlightData.GCLP, 64, 226.0, "coast").stream()
                 .filter(candidate -> candidate.routeType() == RouteType.GENERATED_ONE_WAYPOINT)
@@ -140,7 +164,8 @@ class RouteCandidateGeneratorTest {
         int compatibleWaypointCount = result.compatibleWaypointCount();
         int maximumGeneratedCandidates = compatibleWaypointCount
                 + compatibleWaypointCount * (compatibleWaypointCount - 1) / 2
-                + 40;
+                + 40
+                + 80;
 
         assertTrue(result.generatedCandidateRoutes() <= maximumGeneratedCandidates);
     }
@@ -288,12 +313,16 @@ class RouteCandidateGeneratorTest {
     }
 
     @Test
-    void coastPreferenceGeneratesLongerCoastalRoutesWhenEnoughTimeIsAvailable() {
+    void coastPreferenceKeepsCoastalRoutesLocalByDefault() {
         var routes = generator.generate(MockFlightData.GCLP, 180, 226.0, "coast");
 
         assertTrue(routes.stream()
                 .filter(route -> route.tags().contains("coast"))
-                .anyMatch(route -> estimatedTimeMinutes(route, 226.0) >= 90.0));
+                .flatMap(route -> route.waypoints().stream())
+                .noneMatch(waypoint -> waypoint.name().equals("Isla de Lobos")
+                        || waypoint.name().equals("Costa oeste de Fuerteventura")
+                        || waypoint.name().equals("Costa sur de Lanzarote")
+                        || waypoint.name().equals("Punta de Papagayo")));
     }
 
     @Test

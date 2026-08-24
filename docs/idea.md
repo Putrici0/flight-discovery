@@ -13,7 +13,7 @@ Planificar un vuelo recreativo sencillo exige equilibrar varias restricciones:
 - Interes visual de la ruta.
 - Preferencias como costa, montana, panoramica o rutas cortas.
 
-Si el sistema solo filtra por un maximo de tiempo, tiende a devolver rutas demasiado cortas. Para un vuelo recreativo, una ruta que aprovecha bien el tiempo disponible suele ser mas util que una ruta simplemente viable.
+Si el sistema solo filtra por un maximo de tiempo, tiende a devolver rutas demasiado cortas. Si optimiza demasiado el tiempo objetivo, puede recomendar rutas lejanas sin valor recreativo suficiente. Para un vuelo recreativo, el objetivo es una ruta interesante que encaje en el bloque disponible, no quemar minutos a cualquier precio.
 
 ## Propuesta
 
@@ -39,7 +39,7 @@ El sistema devuelve hasta 5 recomendaciones con:
 
 ## Enfoque de Tiempo
 
-El tiempo disponible se trata como una duracion objetivo, no solo como limite maximo.
+El tiempo disponible se trata como limite operativo y orientacion. No es una obligacion de rellenar minutos.
 
 La duracion objetivo es:
 
@@ -47,7 +47,9 @@ La duracion objetivo es:
 targetDurationMinutes = usefulAvailableTimeMinutes * 0.85
 ```
 
-Las rutas que aprovechan entre 70% y 100% del tiempo util puntuan alto. Las rutas demasiado cortas se penalizan si la preferencia no es `short`. Las rutas que superan el tiempo util se permiten hasta 125%, pero con penalizacion y warning.
+Las rutas que aprovechan entre 70% y 100% del tiempo util puntuan alto en `timeFitScore`, pero la seleccion final puede preferir una ruta local mas corta frente a una ruta lejana artificial. Las rutas que superan el tiempo util se permiten hasta 125%, pero con penalizacion y warning.
+
+Las rutas locales de alto interes pueden anadir tiempo de observacion escenica explicito. Las travesias entre islas existen como categoria especial, pero solo suben por defecto si el usuario pide `inter-island`, `islands`, `cross-country` o `adventure`.
 
 ## Generacion de Rutas
 
@@ -60,7 +62,7 @@ Bandas de candidatas:
 - `long`: 75% - 100%.
 - `extended`: 100% - 125%.
 
-El objetivo es devolver opciones variadas sin caer en una lista de rutas siempre cortas. La seleccion prioriza las que mejor encajan con el tiempo disponible y conserva variedad de bandas y tipos de ruta.
+El objetivo es devolver opciones variadas sin caer en rutas siempre cortas ni en saltos lejanos artificiales. La seleccion prioriza rutas locales coherentes, despues encaje temporal, preferencia y variedad.
 
 ## Alcance del MVP
 

@@ -61,16 +61,14 @@ class RecommendationServiceTest {
     }
 
     @Test
-    void prioritizesRoutesNearNinetyToOneHundredTenMinutesWhenTwoHoursAreAvailable() {
+    void doesNotForceRoutesNearTargetDurationWhenLocalRoutesAreBetter() {
         var recommendations = recommendationService.recommend(requestWithUsefulTime(120)).recommendations();
         var topThreeRecommendations = recommendations.subList(0, Math.min(3, recommendations.size()));
-        long nearTargetRecommendations = topThreeRecommendations.stream()
-                .filter(recommendation -> recommendation.estimatedTimeMinutes() >= 90.0)
-                .filter(recommendation -> recommendation.estimatedTimeMinutes() <= 110.0)
-                .count();
 
         assertFalse(topThreeRecommendations.isEmpty());
-        assertTrue(nearTargetRecommendations >= Math.min(2, topThreeRecommendations.size()));
+        assertTrue(topThreeRecommendations.stream().noneMatch(this::isInterIslandRecommendation));
+        assertTrue(topThreeRecommendations.stream()
+                .anyMatch(recommendation -> recommendation.estimatedTimeMinutes() < 90.0));
     }
 
     @Test
@@ -87,13 +85,89 @@ class RecommendationServiceTest {
     }
 
     @Test
+    void highAvailableTimeCanReturnShortLocalRoutesInsteadOfArtificialLongRoutes() {
+        var request = requestWithSafetyMargin(150, 15);
+        var debug = recommendationService.debug(request);
+
+        assertFalse(debug.recommendations().isEmpty());
+        assertTrue(debug.recommendations().stream()
+                .noneMatch(this::isInterIslandRecommendation));
+    }
+
+    @Test
+    void recommendationsCanChangeAsAvailableTimeIncreasesWithoutForcingLongerAverageDuration() {
+        var mediumRecommendations = recommendationService.recommend(requestWithSafetyMargin(150, 15)).recommendations();
+        var longRecommendations = recommendationService.recommend(requestWithSafetyMargin(240, 15)).recommendations();
+
+        assertNotEquals(
+                mediumRecommendations.stream().map(RecommendedRouteResponse::id).toList(),
+                longRecommendations.stream().map(RecommendedRouteResponse::id).toList()
+        );
+    }
+
+    @Test
+    void highAvailableTimeDoesNotForceInterIslandRoutesAboveLocalAlternatives() {
+        var debug = recommendationService.debug(requestWithSafetyMargin(420, 15));
+        var topThreeRecommendations = debug.recommendations().subList(0, Math.min(3, debug.recommendations().size()));
+
+        assertFalse(topThreeRecommendations.isEmpty());
+        assertTrue(topThreeRecommendations.stream().noneMatch(this::isInterIslandRecommendation));
+    }
+
+    @Test
+    void highAvailableTimeWithMountainPreferenceStillPrioritizesLocalRoutes() {
+        var debug = recommendationService.debug(requestWithPreferenceAvailableTimeAndSafetyMargin("mountain", 420, 15));
+        var topThreeRecommendations = debug.recommendations().subList(0, Math.min(3, debug.recommendations().size()));
+
+        assertFalse(topThreeRecommendations.isEmpty());
+        assertTrue(topThreeRecommendations.stream().noneMatch(this::isInterIslandRecommendation));
+    }
+
+    @Test
+    void localScenicRoutesCanUseExplicitSightseeingTimeInsteadOfArtificialDistance() {
+        var recommendations = recommendationService.recommend(requestWithPreferenceAndUsefulTime("mountain", 120)).recommendations();
+        var scenicLocalRecommendation = recommendations.stream()
+                .filter(recommendation -> !isInterIslandRecommendation(recommendation))
+                .filter(recommendation -> recommendation.sightseeingTimeMinutes() > 0.0)
+                .findFirst()
+                .orElseThrow();
+
+        assertTrue(scenicLocalRecommendation.estimatedTimeMinutes() > scenicLocalRecommendation.baseFlightTimeMinutes());
+        assertTrue(scenicLocalRecommendation.sightseeingTimeMinutes() <= scenicLocalRecommendation.baseFlightTimeMinutes() * 0.30 + 0.01);
+        assertTrue(scenicLocalRecommendation.explanation().contains("observacion escenica local"));
+    }
+
+    @Test
+    void interIslandPreferenceCanPromoteInterIslandRoutes() {
+        var recommendations = recommendationService.recommend(requestWithPreferenceAndUsefulTime("inter-island", 180)).recommendations();
+
+        assertTrue(recommendations.stream().anyMatch(this::isInterIslandRecommendation));
+    }
+
+    @Test
+    void finalSelectionAvoidsRepeatingTheSameWaypointTooOftenWhenAlternativesExist() {
+        var recommendations = recommendationService.recommend(requestWithSafetyMargin(180, 15)).recommendations();
+        var waypointNames = recommendations.stream()
+                .flatMap(recommendation -> recommendation.waypoints().stream())
+                .map(waypoint -> waypoint.name().toLowerCase())
+                .toList();
+        long highestWaypointUsage = waypointNames.stream()
+                .mapToLong(waypoint -> java.util.Collections.frequency(waypointNames, waypoint))
+                .max()
+                .orElse(0);
+
+        assertTrue(highestWaypointUsage <= 4);
+    }
+
+    @Test
     void prioritizesGoodFitRecommendationsWhenAvailable() {
         var request = requestWithAvailableTime(120);
         var response = recommendationService.recommend(request);
         var debug = recommendationService.debug(request);
         var recommendations = response.recommendations();
-        long availableGoodFitCandidates = debug.candidates().stream()
+        long availableLocalGoodFitCandidates = debug.candidates().stream()
                 .filter(candidate -> candidate.totalScore() != null)
+                .filter(candidate -> !isInterIslandCandidate(candidate.routeId(), candidate.routeName()))
                 .filter(candidate -> durationCategory(candidate.estimatedTimeMinutes(), debug.usefulAvailableTimeMinutes())
                         == RouteDurationCategory.GOOD_FIT)
                 .count();
@@ -101,9 +175,11 @@ class RecommendationServiceTest {
                 .filter(recommendation -> recommendation.routeDurationCategory() == RouteDurationCategory.GOOD_FIT)
                 .count();
 
-        if (availableGoodFitCandidates > 0) {
+        if (availableLocalGoodFitCandidates > 0) {
             assertEquals(RouteDurationCategory.GOOD_FIT, recommendations.getFirst().routeDurationCategory());
-            assertTrue(goodFitRecommendations >= Math.min(2, availableGoodFitCandidates));
+            assertTrue(goodFitRecommendations >= Math.min(2, availableLocalGoodFitCandidates));
+        } else {
+            assertFalse(isInterIslandRecommendation(recommendations.getFirst()));
         }
     }
 
@@ -407,12 +483,11 @@ class RecommendationServiceTest {
     }
 
     @Test
-    void includesThreeOrMoreWaypointGeneratedRoutesWhenUsefulTimeIsHighEnough() {
-        var recommendations = recommendationService.recommend(requestWithAvailableTime(180)).recommendations();
+    void debugCandidatesIncludeThreeOrMoreWaypointGeneratedRoutesWhenUsefulTimeIsHighEnough() {
+        var debug = recommendationService.debug(requestWithAvailableTime(180));
 
-        assertTrue(recommendations.stream()
-                .anyMatch(recommendation -> recommendation.routeType() == RouteType.GENERATED_THREE_OR_MORE_WAYPOINTS
-                        && recommendation.waypoints().size() >= 3));
+        assertTrue(debug.candidates().stream()
+                .anyMatch(candidate -> candidate.routeType() == RouteType.GENERATED_THREE_OR_MORE_WAYPOINTS));
     }
 
     @Test
@@ -442,25 +517,16 @@ class RecommendationServiceTest {
     }
 
     @Test
-    void tooShortRoutesDoNotDominateTopFiveWhenAlternativesExist() {
+    void tooShortLocalRoutesCanBeatLongerInterIslandAlternativesByDefault() {
         var request = requestWithUsefulTime(120);
-        var debug = recommendationService.debug(request);
-        boolean hasNonTooShortAlternatives = debug.candidates().stream()
-                .filter(candidate -> candidate.totalScore() != null)
-                .anyMatch(candidate -> durationCategory(candidate.estimatedTimeMinutes(), debug.usefulAvailableTimeMinutes())
-                        != RouteDurationCategory.TOO_SHORT);
         var topFiveRecommendations = recommendationService.recommend(request)
                 .recommendations()
                 .stream()
                 .limit(5)
                 .toList();
-        long tooShortRecommendations = topFiveRecommendations.stream()
-                .filter(recommendation -> recommendation.routeDurationCategory() == RouteDurationCategory.TOO_SHORT)
-                .count();
 
-        if (hasNonTooShortAlternatives) {
-            assertTrue(tooShortRecommendations <= topFiveRecommendations.size() / 2);
-        }
+        assertFalse(topFiveRecommendations.isEmpty());
+        assertTrue(topFiveRecommendations.stream().noneMatch(this::isInterIslandRecommendation));
     }
 
     @Test
@@ -523,6 +589,23 @@ class RecommendationServiceTest {
                 2.3,
                 preference,
                 0
+        );
+    }
+
+    private RecommendationRequest requestWithPreferenceAvailableTimeAndSafetyMargin(
+            String preference,
+            int availableTimeMinutes,
+            int safetyMarginPercent
+    ) {
+        return new RecommendationRequest(
+                "GCLP",
+                availableTimeMinutes,
+                "cessna-172",
+                226.0,
+                34.0,
+                2.3,
+                preference,
+                safetyMarginPercent
         );
     }
 
@@ -618,6 +701,26 @@ class RecommendationServiceTest {
                         .map(second -> new RoutePair(first, second)))
                 .findFirst()
                 .orElseThrow();
+    }
+
+    private boolean isInterIslandRecommendation(RecommendedRouteResponse recommendation) {
+        String normalizedRouteText = (recommendation.id() + " " + recommendation.name() + " " + recommendation.explanation()).toLowerCase();
+
+        return isInterIslandText(normalizedRouteText);
+    }
+
+    private boolean isInterIslandCandidate(String routeId, String routeName) {
+        return isInterIslandText((routeId + " " + routeName).toLowerCase());
+    }
+
+    private boolean isInterIslandText(String normalizedRouteText) {
+        return normalizedRouteText.contains("inter-island")
+                || normalizedRouteText.contains("entre islas")
+                || normalizedRouteText.contains("fuerteventura")
+                || normalizedRouteText.contains("lanzarote")
+                || normalizedRouteText.contains("lobos")
+                || normalizedRouteText.contains("papagayo")
+                || normalizedRouteText.contains("canal oriental");
     }
 
     private record RoutePair(

@@ -7,6 +7,7 @@
 - Revisar si `extended` debe tener un warning especifico distinto de "supera ligeramente el tiempo disponible".
 - Parametrizar pesos de scoring y cuotas de bandas cuando haya mas datos.
 - Mejorar logging para diferenciar descartes por tiempo, limite de candidatas y seleccion final.
+- Modelar variantes de ruta locales mas ricas: vuelta parcial/completa a isla, tramos panoramicos lentos y limites configurables de observacion escenica.
 
 ## Datos y Fuentes
 

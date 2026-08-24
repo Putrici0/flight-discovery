@@ -25,6 +25,8 @@ public class RouteCandidateGenerator {
     private static final int MAX_GENERATED_ROUTES = 30;
     private static final int MIN_TIME_FOR_THREE_OR_MORE_WAYPOINT_ROUTES = 90;
     private static final int MAX_THREE_OR_MORE_WAYPOINT_CANDIDATES = 40;
+    private static final int MIN_TIME_FOR_EXTENDED_WAYPOINT_ROUTES = 180;
+    private static final int MAX_EXTENDED_WAYPOINT_CANDIDATES = 80;
     private static final double PREFERRED_ROUTE_RATIO = 0.80;
     private static final String TIME_DISCARD_REASON = "Estimated route time exceeds useful available time plus 25% tolerance";
     private static final String CANDIDATE_LIMIT_DISCARD_REASON = "Not selected after dynamic candidate preference and diversity limit";
@@ -57,6 +59,7 @@ public class RouteCandidateGenerator {
     ) {
         List<VisualWaypoint> prioritizedWaypoints = waypointRepository.findAll().stream()
                 .filter(waypoint -> isCompatibleWithDepartureAirport(waypoint, departureAirport))
+                .filter(waypoint -> isInterIslandPreference(preference) || !isInterIslandWaypoint(waypoint))
                 .sorted(waypointComparator(preference))
                 .toList();
         LOGGER.info("Recommendation diagnostics: visualWaypoints={} departureAirport={} usefulFlightTimeMinutes={}",
@@ -66,6 +69,7 @@ public class RouteCandidateGenerator {
         candidates.addAll(singleWaypointRoutes(departureAirport, prioritizedWaypoints));
         candidates.addAll(twoWaypointRoutes(departureAirport, prioritizedWaypoints));
         candidates.addAll(threeOrMoreWaypointRoutes(departureAirport, prioritizedWaypoints, availableTimeMinutes));
+        candidates.addAll(extendedWaypointRoutes(departureAirport, prioritizedWaypoints, availableTimeMinutes, cruiseSpeedKmh, preference));
 
         List<RouteCandidateDiscard> discardedCandidates = new ArrayList<>();
         List<TimedRouteCandidate> timeViableCandidates = new ArrayList<>();
@@ -152,6 +156,69 @@ public class RouteCandidateGenerator {
         }
 
         return routes;
+    }
+
+    private List<FlightRoute> extendedWaypointRoutes(
+            Airport departureAirport,
+            List<VisualWaypoint> waypoints,
+            double availableTimeMinutes,
+            double cruiseSpeedKmh,
+            String preference
+    ) {
+        if (availableTimeMinutes < MIN_TIME_FOR_EXTENDED_WAYPOINT_ROUTES || waypoints.size() < 4) {
+            return List.of();
+        }
+
+        List<TimedRouteCandidate> routes = new ArrayList<>();
+
+        for (int i = 0; i < waypoints.size(); i++) {
+            for (int j = i + 1; j < waypoints.size(); j++) {
+                for (int k = j + 1; k < waypoints.size(); k++) {
+                    for (int l = k + 1; l < waypoints.size(); l++) {
+                        List<VisualWaypoint> orderedWaypoints = extendedRouteOrder(
+                                departureAirport,
+                                List.of(waypoints.get(i), waypoints.get(j), waypoints.get(k), waypoints.get(l))
+                        );
+                        FlightRoute route = multiWaypointRoute(departureAirport, orderedWaypoints);
+                        double estimatedTimeMinutes = estimatedTimeMinutes(route, cruiseSpeedKmh);
+                        routes.add(new TimedRouteCandidate(route, estimatedTimeMinutes, bandFor(estimatedTimeMinutes, availableTimeMinutes)));
+                    }
+                }
+            }
+        }
+
+        return routes.stream()
+                .filter(route -> route.estimatedTimeMinutes() <= availableTimeMinutes * MAX_ALLOWED_TIME_OVERRUN_RATIO)
+                .sorted(routeComparator(preference, availableTimeMinutes))
+                .limit(MAX_EXTENDED_WAYPOINT_CANDIDATES)
+                .map(TimedRouteCandidate::route)
+                .toList();
+    }
+
+    private List<VisualWaypoint> extendedRouteOrder(Airport departureAirport, List<VisualWaypoint> waypoints) {
+        List<VisualWaypoint> byDistanceDescending = waypoints.stream()
+                .sorted(Comparator.comparingDouble(
+                        (VisualWaypoint waypoint) -> distanceFromDepartureAirport(departureAirport, waypoint)
+                ).reversed())
+                .toList();
+        List<VisualWaypoint> byDistanceAscending = byDistanceDescending.reversed();
+        List<VisualWaypoint> orderedWaypoints = new ArrayList<>();
+
+        for (int i = 0; i < byDistanceDescending.size(); i++) {
+            VisualWaypoint waypoint = i % 2 == 0
+                    ? byDistanceDescending.get(i / 2)
+                    : byDistanceAscending.get(i / 2);
+
+            if (!orderedWaypoints.contains(waypoint)) {
+                orderedWaypoints.add(waypoint);
+            }
+        }
+
+        byDistanceDescending.stream()
+                .filter(waypoint -> !orderedWaypoints.contains(waypoint))
+                .forEach(orderedWaypoints::add);
+
+        return orderedWaypoints;
     }
 
     private List<TimedRouteCandidate> limitCandidates(
@@ -353,6 +420,10 @@ public class RouteCandidateGenerator {
     }
 
     private FlightRoute threeWaypointRoute(Airport departureAirport, List<VisualWaypoint> waypoints) {
+        return multiWaypointRoute(departureAirport, waypoints);
+    }
+
+    private FlightRoute multiWaypointRoute(Airport departureAirport, List<VisualWaypoint> waypoints) {
         List<String> tags = StreamUtils.distinctTags(waypoints);
         double scenicScore = waypoints.stream()
                 .mapToDouble(VisualWaypoint::scenicValue)
@@ -369,7 +440,7 @@ public class RouteCandidateGenerator {
 
         return new FlightRoute(
                 "generated-three-plus-" + departureAirport.code().toLowerCase() + "-" + waypointIds,
-                "Circular larga a " + waypointNames,
+                (waypoints.size() > 3 ? "Circular extendida a " : "Circular larga a ") + waypointNames,
                 "Ruta circular generada desde " + departureAirport.code()
                         + " hacia " + waypointNames + " y regreso al aeropuerto de salida.",
                 RouteType.GENERATED_THREE_OR_MORE_WAYPOINTS,
@@ -387,6 +458,15 @@ public class RouteCandidateGenerator {
 
     private boolean fitsAvailableTime(FlightRoute route, double availableTimeMinutes, double cruiseSpeedKmh) {
         return estimatedTimeMinutes(route, cruiseSpeedKmh) <= availableTimeMinutes * MAX_ALLOWED_TIME_OVERRUN_RATIO;
+    }
+
+    private double distanceFromDepartureAirport(Airport departureAirport, VisualWaypoint waypoint) {
+        return routeCalculationService.haversineKm(
+                departureAirport.latitude(),
+                departureAirport.longitude(),
+                waypoint.latitude(),
+                waypoint.longitude()
+        );
     }
 
     private DurationBand bandFor(double estimatedTimeMinutes, double availableTimeMinutes) {
@@ -467,13 +547,45 @@ public class RouteCandidateGenerator {
 
     private Comparator<TimedRouteCandidate> routeComparator(String preference, double availableTimeMinutes) {
         return Comparator
-                .comparing((TimedRouteCandidate candidate) -> candidate.band().priority())
+                .comparingInt((TimedRouteCandidate candidate) -> routeExperiencePriority(candidate.route(), preference))
+                .thenComparing(candidate -> candidate.band().priority())
                 .thenComparingDouble(candidate -> timeFitDistance(candidate, availableTimeMinutes))
                 .thenComparing(Comparator.comparing(
                         (TimedRouteCandidate candidate) -> routeMatchesPreference(candidate.route(), preference)
                 ).reversed())
                 .thenComparing(candidate -> candidate.route().scenicScore(), Comparator.reverseOrder())
                 .thenComparing(candidate -> candidate.route().waypoints().size());
+    }
+
+    private int routeExperiencePriority(FlightRoute route, String preference) {
+        if (!isInterIslandRoute(route) || isInterIslandPreference(preference)) {
+            return 0;
+        }
+
+        return 1;
+    }
+
+    private boolean isInterIslandRoute(FlightRoute route) {
+        return route.tags().stream()
+                .anyMatch(tag -> tag.equalsIgnoreCase("inter-island") || tag.equalsIgnoreCase("islands"));
+    }
+
+    private boolean isInterIslandWaypoint(VisualWaypoint waypoint) {
+        return waypoint.tags().stream()
+                .anyMatch(tag -> tag.equalsIgnoreCase("inter-island") || tag.equalsIgnoreCase("islands"));
+    }
+
+    private boolean isInterIslandPreference(String preference) {
+        if (preference == null || preference.isBlank()) {
+            return false;
+        }
+
+        String normalizedPreference = preference.trim().toLowerCase();
+
+        return normalizedPreference.equals("inter-island")
+                || normalizedPreference.equals("islands")
+                || normalizedPreference.equals("cross-country")
+                || normalizedPreference.equals("adventure");
     }
 
     private double timeFitDistance(TimedRouteCandidate candidate, double availableTimeMinutes) {

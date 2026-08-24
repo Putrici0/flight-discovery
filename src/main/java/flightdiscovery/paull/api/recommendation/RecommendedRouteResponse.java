@@ -13,6 +13,8 @@ public record RecommendedRouteResponse(
         RouteType routeType,
         List<Waypoint> waypoints,
         double approximateDistanceKm,
+        double baseFlightTimeMinutes,
+        double sightseeingTimeMinutes,
         double estimatedTimeMinutes,
         double estimatedTimeHours,
         RouteDurationCategory routeDurationCategory,
