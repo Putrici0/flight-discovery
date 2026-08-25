@@ -4,6 +4,7 @@ import java.util.List;
 
 import flightdiscovery.paull.domain.model.RouteScore;
 import flightdiscovery.paull.domain.model.RouteType;
+import flightdiscovery.paull.domain.model.RouteWeatherSummary;
 import flightdiscovery.paull.domain.model.Waypoint;
 
 public record RecommendedRouteResponse(
@@ -34,6 +35,8 @@ public record RecommendedRouteResponse(
         double cloudCoverPercent,
         double precipitationProbability,
         double visibilityKm,
+        double temperatureCelsius,
+        RouteWeatherSummary routeWeatherSummary,
         RouteScore scoreBreakdown,
         String explanation,
         List<String> warnings

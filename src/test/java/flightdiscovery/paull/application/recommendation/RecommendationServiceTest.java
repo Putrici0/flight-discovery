@@ -403,6 +403,16 @@ class RecommendationServiceTest {
         assertTrue(recommendation.precipitationProbability() >= 0.0);
         assertTrue(recommendation.precipitationProbability() <= 100.0);
         assertTrue(recommendation.visibilityKm() >= 0.0);
+        assertNotNull(recommendation.routeWeatherSummary());
+        assertTrue(recommendation.routeWeatherSummary().averageWindKmh() >= 0.0);
+        assertTrue(recommendation.routeWeatherSummary().maxWindKmh() >= recommendation.routeWeatherSummary().averageWindKmh());
+        assertTrue(recommendation.routeWeatherSummary().averageCloudCoverPercent() >= 0.0);
+        assertTrue(recommendation.routeWeatherSummary().averageCloudCoverPercent() <= 100.0);
+        assertTrue(recommendation.routeWeatherSummary().maxPrecipitationProbability() >= 0.0);
+        assertTrue(recommendation.routeWeatherSummary().maxPrecipitationProbability() <= 100.0);
+        assertTrue(recommendation.routeWeatherSummary().minVisibilityKm() >= 0.0);
+        assertTrue(recommendation.routeWeatherSummary().averageTemperatureCelsius() >= -50.0);
+        assertTrue(recommendation.routeWeatherSummary().averageTemperatureCelsius() <= 60.0);
         assertTrue(recommendation.explanation().contains("meteorologia simulada"));
     }
 

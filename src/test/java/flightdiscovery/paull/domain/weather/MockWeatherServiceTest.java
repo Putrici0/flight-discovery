@@ -40,6 +40,8 @@ class MockWeatherServiceTest {
         assertTrue(firstWeather.precipitationProbability() >= 0.0);
         assertTrue(firstWeather.precipitationProbability() <= 100.0);
         assertTrue(firstWeather.visibilityKm() >= 0.0);
+        assertTrue(firstWeather.temperatureCelsius() >= -50.0);
+        assertTrue(firstWeather.temperatureCelsius() <= 60.0);
         assertTrue(firstWeather.weatherScore() >= 0.0);
         assertTrue(firstWeather.weatherScore() <= 100.0);
     }

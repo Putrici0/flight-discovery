@@ -5,6 +5,7 @@ public record WeatherData(
         double cloudCoverPercent,
         double precipitationProbability,
         double visibilityKm,
+        double temperatureCelsius,
         double weatherScore
 ) {
 }

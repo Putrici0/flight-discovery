@@ -61,6 +61,8 @@ export interface RecommendedRoute {
   cloudCoverPercent?: number;
   precipitationProbability?: number;
   visibilityKm?: number;
+  temperatureCelsius?: number;
+  routeWeatherSummary?: RouteWeatherSummary;
   scoreBreakdown: {
     weatherScore: number;
     timeFitScore: number;
@@ -71,6 +73,15 @@ export interface RecommendedRoute {
   };
   explanation: string;
   warnings?: string[];
+}
+
+export interface RouteWeatherSummary {
+  averageWindKmh: number;
+  maxWindKmh: number;
+  averageCloudCoverPercent: number;
+  maxPrecipitationProbability: number;
+  minVisibilityKm: number;
+  averageTemperatureCelsius: number;
 }
 
 export interface SightseeingManeuver {

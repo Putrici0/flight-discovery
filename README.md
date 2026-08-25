@@ -1,10 +1,10 @@
 # Flight Discovery
 
-Flight Discovery es un MVP para recomendar rutas aereas recreativas a pilotos privados usando datos mock. Parte de un aeropuerto de salida y combina tiempo disponible, avion, consumo, precio de combustible, meteorologia simulada y preferencia de ruta para proponer rutas viables y atractivas.
+Flight Discovery es un MVP para recomendar rutas aereas recreativas a pilotos privados usando datos mock por defecto. Parte de un aeropuerto de salida y combina tiempo disponible, avion, consumo, precio de combustible, meteorologia y preferencia de ruta para proponer rutas viables y atractivas.
 
 El tiempo disponible se usa como limite operativo y orientacion, no como una obligacion de rellenar minutos. El backend calcula un tiempo util, prioriza rutas recreativas locales con valor visual y solo promueve travesias entre islas cuando el usuario las pide explicitamente o faltan alternativas locales.
 
-Este proyecto no debe usarse para planificacion aeronautica profesional. Todavia no integra meteorologia real, espacio aereo, NOTAM, performance real de aeronaves ni navegacion en tiempo real.
+Este proyecto no debe usarse para planificacion aeronautica profesional. La meteorologia real via Open-Meteo es opcional y orientativa; todavia no integra METAR/TAF, espacio aereo, NOTAM, performance real de aeronaves ni navegacion en tiempo real.
 
 ## Requisitos
 
@@ -32,6 +32,29 @@ El backend queda disponible en:
 ```text
 http://localhost:8080
 ```
+
+Por defecto el backend usa meteorologia mock:
+
+```properties
+weather.provider=mock
+```
+
+Para activar meteorologia real orientativa via Open-Meteo:
+
+```bash
+mvn spring-boot:run -Dspring-boot.run.arguments="--weather.provider=open-meteo"
+```
+
+Tambien puede configurarse en `src/main/resources/application.properties`:
+
+```properties
+weather.provider=open-meteo
+```
+
+Valores admitidos:
+
+- `mock`: usa `MockWeatherService`. Es el valor por defecto.
+- `open-meteo`: usa `OpenMeteoWeatherService` y consulta Open-Meteo con coordenadas del aeropuerto de salida y `plannedDepartureDateTime`.
 
 ## Ejecutar Frontend
 
@@ -163,6 +186,15 @@ Respuesta resumida:
       "cloudCoverPercent": 35.0,
       "precipitationProbability": 5.0,
       "visibilityKm": 30.0,
+      "temperatureCelsius": 23.0,
+      "routeWeatherSummary": {
+        "averageWindKmh": 14.0,
+        "maxWindKmh": 18.0,
+        "averageCloudCoverPercent": 42.0,
+        "maxPrecipitationProbability": 15.0,
+        "minVisibilityKm": 18.0,
+        "averageTemperatureCelsius": 23.5
+      },
       "scoreBreakdown": {
         "weatherScore": 80.0,
         "timeFitScore": 100.0,
@@ -218,7 +250,9 @@ Campos destacados:
   - `long`: 75% a 100%.
   - `extended`: 100% a 125%, permitidas con warning.
 - Generacion por bandas: el generador intenta conservar candidatas `long`, `medium`, `extended` y `short` para evitar que la seleccion quede dominada por rutas muy cortas. Tambien mantiene variedad de tipos de ruta.
-- Scoring: combina `weatherScore` simulado, `timeFitScore`, `preferenceScore`, interes visual y coste. Las rutas `inter-island` reciben una penalizacion por defecto salvo preferencia explicita.
+- Meteorologia por ruta recomendada: ademas del valor meteorologico representativo usado por el scoring, se calcula `routeWeatherSummary` consultando hasta 3 puntos: aeropuerto de salida, primer waypoint como waypoint principal y ultimo waypoint antes de volver. Si hay waypoints repetidos o menos puntos disponibles, se reducen las consultas.
+- `routeWeatherSummary`: agrega viento medio y maximo, nubosidad media, probabilidad maxima de precipitacion, visibilidad minima y temperatura media.
+- Scoring: combina `weatherScore`, `timeFitScore`, `preferenceScore`, interes visual y coste. El resumen multi-punto no cambia todavia el scoring. Las rutas `inter-island` reciben una penalizacion por defecto salvo preferencia explicita.
 - `timeFitScore`: puntua mejor las rutas cercanas a `targetDurationMinutes`, permite rutas hasta el 125% del tiempo util y descarta el encaje temporal por encima de ese margen.
 - Penalizacion de rutas demasiado cortas: si `preference` no es `short`, las rutas por debajo del 40% del tiempo util penalizan mucho y las de 40%-60% penalizan moderadamente. Si `preference` es `short`, esas rutas no se penalizan por duracion.
 - `routeDurationCategory`: clasifica cada recomendacion como `TOO_SHORT`, `SHORT`, `GOOD_FIT`, `LONG`, `SLIGHTLY_OVER_TIME` o `TOO_LONG` segun la proporcion entre `estimatedTimeMinutes` y `usefulAvailableTimeMinutes`.
@@ -235,19 +269,19 @@ El MVP usa datos mock en memoria para:
 - rutas predefinidas
 - waypoints visuales para rutas generadas
 - precios de combustible
-- meteorologia simulada
+- meteorologia simulada por defecto; opcionalmente Open-Meteo con `weather.provider=open-meteo`
 
 No hay base de datos ni integraciones externas reales todavia.
 
 ## Limitaciones Actuales
 
-- Sin Open-Meteo, METAR/TAF, OpenAIP ni PostGIS.
+- Sin METAR/TAF, OpenAIP ni PostGIS.
 - Sin persistencia.
 - Sin restricciones reales de espacio aereo.
 - Sin validacion aeronautica profesional.
 - Sin navegacion ni planificacion operacional.
 - Catalogo pequeno de aeropuertos, aviones, rutas y waypoints visuales.
-- Meteorologia y precios son simulados/mock.
+- Meteorologia mock por defecto; Open-Meteo es opcional y no debe usarse como fuente aeronautica operacional. Precios simulados/mock.
 
 ## Proximos Pasos
 
