@@ -57,7 +57,7 @@ targetDurationMinutes = usefulAvailableTimeMinutes * 0.85
 
 Las rutas entre 70% y 100% del tiempo util puntuan alto, con maximo cerca del 85%. Las rutas entre 100% y 125% se permiten pero se penalizan. Por encima de 125% se descartan.
 
-El `totalScore` penaliza rutas con tag `inter-island` salvo que la preferencia sea `inter-island`, `islands`, `cross-country` o `adventure`. Ademas, la seleccion final intenta llenar primero el top 5 con rutas locales; las interinsulares se usan como categoria especial, no como forma por defecto de consumir tiempo.
+El `totalScore` penaliza rutas con tag `inter-island` salvo que la preferencia sea `inter-island`, `islands`, `cross-country` o `adventure`. Tambien incorpora una puntuacion solar aproximada basada en `plannedDepartureDateTime`, el azimut solar estimado y el rumbo de los tramos, para penalizar rutas con sol frontal. Ademas, la seleccion final intenta llenar primero el top 5 con rutas locales; las interinsulares se usan como categoria especial, no como forma por defecto de consumir tiempo.
 
 Las rutas demasiado cortas se tratan de forma explicita:
 
@@ -86,7 +86,9 @@ Las rutas demasiado cortas se tratan de forma explicita:
 
 La generacion usa bandas de duracion para que el conjunto de candidatas no quede sesgado hacia rutas muy cortas. Para cada busqueda intenta conservar rutas `long`, `medium`, `extended` y `short`, y despues rellena con las mejores candidatas restantes. Cuando hay una preferencia como `coast` o `mountain`, reserva la mayoria de las candidatas para rutas que coinciden con la preferencia, pero mantiene alternativas para diversidad.
 
-Las rutas locales de alto valor visual pueden recibir `sightseeingTimeMinutes`: minutos explicitos de observacion escenica. No aumentan la distancia; aumentan el tiempo estimado, combustible y coste de forma transparente. Los limites actuales son 12 minutos por waypoint, 30 minutos por ruta y un maximo del 30% del tiempo base.
+Las rutas locales de alto valor visual pueden recibir `sightseeingTimeMinutes`: minutos explicitos de observacion escenica. No se usan para alargar artificialmente el vuelo; aumentan el tiempo estimado, combustible y coste de forma transparente. Los limites actuales son 6 minutos por waypoint, 15 minutos por ruta y un maximo del 20% del tiempo base.
+
+Cuando una ruta incluye observacion escenica, la respuesta devuelve `sightseeingManeuvers` con waypoint, duracion, radio e instruccion, y `flightPath` con puntos intermedios de orbita para que el mapa pinte la maniobra en vez de representar solo lineas rectas entre waypoints.
 
 ## Debug
 

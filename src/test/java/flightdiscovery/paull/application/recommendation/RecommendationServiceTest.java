@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import java.util.List;
 
@@ -133,8 +134,37 @@ class RecommendationServiceTest {
                 .orElseThrow();
 
         assertTrue(scenicLocalRecommendation.estimatedTimeMinutes() > scenicLocalRecommendation.baseFlightTimeMinutes());
-        assertTrue(scenicLocalRecommendation.sightseeingTimeMinutes() <= scenicLocalRecommendation.baseFlightTimeMinutes() * 0.30 + 0.01);
+        assertTrue(scenicLocalRecommendation.sightseeingTimeMinutes() <= scenicLocalRecommendation.baseFlightTimeMinutes() * 0.20 + 0.01);
+        assertTrue(scenicLocalRecommendation.flightPath().size() > scenicLocalRecommendation.waypoints().size() + 2);
+        assertFalse(scenicLocalRecommendation.sightseeingManeuvers().isEmpty());
+        assertTrue(scenicLocalRecommendation.sightseeingManeuvers().getFirst().instruction().contains("orbita visual"));
         assertTrue(scenicLocalRecommendation.explanation().contains("observacion escenica local"));
+    }
+
+    @Test
+    void plannedDepartureDateTimeChangesSunExposureScore() {
+        var morningRecommendation = recommendationService.recommend(requestWithPlannedDepartureDateTime("2026-08-25T08:00"))
+                .recommendations()
+                .getFirst();
+        var afternoonRecommendation = recommendationService.recommend(requestWithPlannedDepartureDateTime("2026-08-25T18:00"))
+                .recommendations()
+                .stream()
+                .filter(recommendation -> recommendation.id().equals(morningRecommendation.id()))
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals("2026-08-25T08:00", morningRecommendation.plannedDepartureDateTime());
+        assertEquals("2026-08-25T18:00", afternoonRecommendation.plannedDepartureDateTime());
+        assertNotEquals(morningRecommendation.sunExposureScore(), afternoonRecommendation.sunExposureScore());
+    }
+
+    @Test
+    void defaultsPlannedDepartureDateTimeWhenMissing() {
+        var recommendation = recommendationService.recommend(requestWithAvailableTime(120))
+                .recommendations()
+                .getFirst();
+
+        assertNotNull(recommendation.plannedDepartureDateTime());
     }
 
     @Test
@@ -606,6 +636,20 @@ class RecommendationServiceTest {
                 2.3,
                 preference,
                 safetyMarginPercent
+        );
+    }
+
+    private RecommendationRequest requestWithPlannedDepartureDateTime(String plannedDepartureDateTime) {
+        return new RecommendationRequest(
+                "GCLP",
+                120,
+                "cessna-172",
+                226.0,
+                34.0,
+                2.3,
+                "coast",
+                0,
+                plannedDepartureDateTime
         );
     }
 

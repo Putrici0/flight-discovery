@@ -23,6 +23,7 @@ import flightdiscovery.paull.api.recommendation.RecommendationDevelopmentDebugRe
 import flightdiscovery.paull.api.recommendation.RecommendationRouteDiscardDebug;
 import flightdiscovery.paull.api.recommendation.RecommendedRouteResponse;
 import flightdiscovery.paull.api.recommendation.RouteDurationCategory;
+import flightdiscovery.paull.api.recommendation.SightseeingManeuverResponse;
 import flightdiscovery.paull.domain.calculation.RouteCalculationService;
 import flightdiscovery.paull.domain.model.Aircraft;
 import flightdiscovery.paull.domain.model.Airport;
@@ -31,6 +32,7 @@ import flightdiscovery.paull.domain.model.FuelPrice;
 import flightdiscovery.paull.domain.model.FuelPriceSource;
 import flightdiscovery.paull.domain.model.RouteScore;
 import flightdiscovery.paull.domain.model.WeatherData;
+import flightdiscovery.paull.domain.model.Waypoint;
 import flightdiscovery.paull.domain.repository.MockAircraftRepository;
 import flightdiscovery.paull.domain.repository.MockAirportRepository;
 import flightdiscovery.paull.domain.repository.MockFuelPriceRepository;
@@ -50,9 +52,12 @@ public class RecommendationService {
     private static final double HIGH_SHORT_ROUTE_SCORE = 85.0;
     private static final int MAX_RECOMMENDED_ROUTES_PER_WAYPOINT = 2;
     private static final double LOCAL_ROUTE_SIGHTSEEING_MIN_SCENIC_SCORE = 85.0;
-    private static final double MAX_SIGHTSEEING_ROUTE_RATIO = 0.30;
-    private static final double MAX_SIGHTSEEING_MINUTES_PER_WAYPOINT = 12.0;
-    private static final double MAX_TOTAL_SIGHTSEEING_MINUTES = 30.0;
+    private static final double MAX_SIGHTSEEING_ROUTE_RATIO = 0.20;
+    private static final double MAX_SIGHTSEEING_MINUTES_PER_WAYPOINT = 6.0;
+    private static final double MAX_TOTAL_SIGHTSEEING_MINUTES = 15.0;
+    private static final double SIGHTSEEING_ORBIT_MIN_RADIUS_KM = 0.8;
+    private static final double SIGHTSEEING_ORBIT_MAX_RADIUS_KM = 3.0;
+    private static final int SIGHTSEEING_ORBIT_SEGMENTS = 16;
     private static final String TIME_DISCARD_REASON = "Estimated route time exceeds useful available time plus 25% tolerance";
     private static final String FINAL_SELECTION_DISCARD_REASON = "Not selected after score and diversity recommendation limit";
 
@@ -122,7 +127,7 @@ public class RecommendationService {
         var scoredRoutes = routesForScoring.stream()
                 .map(route -> new ScoredRoute(
                         route,
-                        toRecommendation(route, request, usefulAvailableTimeMinutes, cruiseSpeedKmh, fuelBurnLitersPerHour, fuelPrice)
+                        toRecommendation(route, request, departureAirport, usefulAvailableTimeMinutes, cruiseSpeedKmh, fuelBurnLitersPerHour, fuelPrice)
                 ))
                 .toList();
         var usefulTimeViableRoutes = scoredRoutes.stream()
@@ -168,7 +173,7 @@ public class RecommendationService {
         var scoredRoutes = routesForScoring.stream()
                 .map(route -> new ScoredRoute(
                         route,
-                        toRecommendation(route, request, usefulAvailableTimeMinutes, cruiseSpeedKmh, fuelBurnLitersPerHour, fuelPrice)
+                        toRecommendation(route, request, departureAirport, usefulAvailableTimeMinutes, cruiseSpeedKmh, fuelBurnLitersPerHour, fuelPrice)
                 ))
                 .toList();
         var usefulTimeViableRoutes = scoredRoutes.stream()
@@ -492,6 +497,7 @@ public class RecommendationService {
     private RecommendedRouteResponse toRecommendation(
             FlightRoute route,
             RecommendationRequest request,
+            Airport departureAirport,
             double usefulFlightTimeMinutes,
             double cruiseSpeedKmh,
             double fuelBurnLitersPerHour,
@@ -503,9 +509,14 @@ public class RecommendationService {
         double sightseeingTimeMinutes = sightseeingTimeMinutes(route, baseFlightTimeMinutes, usefulFlightTimeMinutes);
         double estimatedTimeMinutes = baseFlightTimeMinutes + sightseeingTimeMinutes;
         double estimatedTimeHours = estimatedTimeMinutes / 60.0;
+        List<SightseeingManeuverResponse> sightseeingManeuvers = sightseeingManeuvers(route, sightseeingTimeMinutes, cruiseSpeedKmh);
+        List<Waypoint> flightPath = flightPath(route, airportWaypoint(departureAirport), sightseeingManeuvers);
         double estimatedFuelLiters = routeCalculationService.estimatedFuelLiters(estimatedTimeMinutes, fuelBurnLitersPerHour);
         double estimatedCost = routeCalculationService.estimatedCost(estimatedFuelLiters, fuelPrice.pricePerLiter());
         WeatherData weatherData = weatherService.weatherFor(route);
+        String plannedDepartureDateTime = request.effectivePlannedDepartureDateTime();
+        double sunAzimuthDegrees = sunAzimuthDegrees(plannedDepartureDateTime);
+        double sunExposureScore = sunExposureScore(route, airportWaypoint(departureAirport), sunAzimuthDegrees, plannedDepartureDateTime);
         RouteScore score = routeScoringService.score(
                 route,
                 estimatedTimeMinutes,
@@ -514,6 +525,7 @@ public class RecommendationService {
                 request.preference(),
                 weatherData.weatherScore()
         );
+        double totalScore = round(clampScore(score.totalScore() * 0.85 + sunExposureScore * 0.15));
 
         return new RecommendedRouteResponse(
                 route.id(),
@@ -521,9 +533,15 @@ public class RecommendationService {
                 route.description(),
                 route.routeType(),
                 route.waypoints(),
+                flightPath,
+                sightseeingManeuvers,
                 round(approximateDistanceKm),
                 round(baseFlightTimeMinutes),
                 round(sightseeingTimeMinutes),
+                plannedDepartureDateTime,
+                round(sunAzimuthDegrees),
+                round(sunExposureScore),
+                sunExposureSummary(sunExposureScore, sunAzimuthDegrees),
                 round(estimatedTimeMinutes),
                 round(estimatedTimeHours),
                 routeDurationCategory(estimatedTimeMinutes, usefulFlightTimeMinutes),
@@ -531,14 +549,14 @@ public class RecommendationService {
                 fuelPrice.pricePerLiter(),
                 fuelPrice.source().name(),
                 roundTwoDecimals(estimatedCost),
-                score.totalScore(),
+                totalScore,
                 score.weatherScore(),
                 weatherData.windKmh(),
                 weatherData.cloudCoverPercent(),
                 weatherData.precipitationProbability(),
                 weatherData.visibilityKm(),
                 score,
-                explanation(route, request, usefulFlightTimeMinutes, estimatedTimeMinutes, sightseeingTimeMinutes, estimatedFuelLiters, estimatedCost, score, weatherData),
+                explanation(route, request, usefulFlightTimeMinutes, estimatedTimeMinutes, sightseeingTimeMinutes, estimatedFuelLiters, estimatedCost, score, weatherData, sunExposureScore),
                 routeWarnings(estimatedTimeMinutes, usefulFlightTimeMinutes, estimatedCost)
         );
     }
@@ -551,7 +569,7 @@ public class RecommendationService {
             return 0.0;
         }
 
-        double targetComfortableDurationMinutes = usefulFlightTimeMinutes * 0.70;
+        double targetComfortableDurationMinutes = usefulFlightTimeMinutes * 0.60;
         double missingMinutes = targetComfortableDurationMinutes - baseFlightTimeMinutes;
         if (missingMinutes <= 0.0) {
             return 0.0;
@@ -561,6 +579,193 @@ public class RecommendationService {
         double routeRatioLimitMinutes = baseFlightTimeMinutes * MAX_SIGHTSEEING_ROUTE_RATIO;
 
         return Math.min(missingMinutes, Math.min(MAX_TOTAL_SIGHTSEEING_MINUTES, Math.min(waypointLimitMinutes, routeRatioLimitMinutes)));
+    }
+
+    private Waypoint airportWaypoint(Airport airport) {
+        return new Waypoint(airport.code(), airport.latitude(), airport.longitude());
+    }
+
+    private List<Waypoint> flightPath(
+            FlightRoute route,
+            Waypoint departureAirport,
+            List<SightseeingManeuverResponse> sightseeingManeuvers
+    ) {
+        List<Waypoint> flightPath = new ArrayList<>();
+        flightPath.add(departureAirport);
+
+        route.waypoints().forEach(waypoint -> {
+            flightPath.add(waypoint);
+            SightseeingManeuverResponse maneuver = sightseeingManeuverFor(waypoint, sightseeingManeuvers);
+            if (maneuver != null) {
+                flightPath.addAll(sightseeingOrbit(waypoint, maneuver.radiusKm()));
+                flightPath.add(waypoint);
+            }
+        });
+
+        flightPath.add(departureAirport);
+
+        return flightPath;
+    }
+
+    private List<SightseeingManeuverResponse> sightseeingManeuvers(
+            FlightRoute route,
+            double sightseeingTimeMinutes,
+            double cruiseSpeedKmh
+    ) {
+        if (sightseeingTimeMinutes <= 0.0) {
+            return List.of();
+        }
+
+        List<Waypoint> sightseeingWaypoints = route.waypoints().stream()
+                .filter(waypoint -> route.waypoints().size() == 1 || waypoint.name().equals(route.waypoints().getFirst().name()))
+                .toList();
+        double sightseeingMinutesPerWaypoint = sightseeingTimeMinutes / sightseeingWaypoints.size();
+
+        return sightseeingWaypoints.stream()
+                .map(waypoint -> {
+                    double radiusKm = sightseeingOrbitRadiusKm(sightseeingMinutesPerWaypoint, cruiseSpeedKmh);
+                    return new SightseeingManeuverResponse(
+                            waypoint.name(),
+                            "CLOCKWISE_ORBIT",
+                            round(sightseeingMinutesPerWaypoint),
+                            round(radiusKm),
+                            "Realizar una orbita visual alrededor de " + waypoint.name()
+                                    + " durante " + round(sightseeingMinutesPerWaypoint)
+                                    + " minutos, radio aproximado " + round(radiusKm) + " km."
+                    );
+                })
+                .toList();
+    }
+
+    private SightseeingManeuverResponse sightseeingManeuverFor(
+            Waypoint waypoint,
+            List<SightseeingManeuverResponse> sightseeingManeuvers
+    ) {
+        return sightseeingManeuvers.stream()
+                .filter(maneuver -> maneuver.waypointName().equals(waypoint.name()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private double sightseeingOrbitRadiusKm(double sightseeingMinutes, double cruiseSpeedKmh) {
+        double orbitDistanceKm = cruiseSpeedKmh * sightseeingMinutes / 60.0;
+
+        return Math.max(
+                SIGHTSEEING_ORBIT_MIN_RADIUS_KM,
+                Math.min(SIGHTSEEING_ORBIT_MAX_RADIUS_KM, orbitDistanceKm / (2.0 * Math.PI))
+        );
+    }
+
+    private List<Waypoint> sightseeingOrbit(Waypoint center, double radiusKm) {
+        List<Waypoint> orbit = new ArrayList<>();
+
+        for (int segment = 0; segment <= SIGHTSEEING_ORBIT_SEGMENTS; segment++) {
+            double angle = 2.0 * Math.PI * segment / SIGHTSEEING_ORBIT_SEGMENTS;
+            double latitudeOffset = radiusKm * Math.cos(angle) / 111.32;
+            double longitudeScale = 111.32 * Math.cos(Math.toRadians(center.latitude()));
+            double longitudeOffset = longitudeScale == 0.0 ? 0.0 : radiusKm * Math.sin(angle) / longitudeScale;
+
+            orbit.add(new Waypoint(
+                    center.name() + " scenic orbit",
+                    center.latitude() + latitudeOffset,
+                    center.longitude() + longitudeOffset
+            ));
+        }
+
+        return orbit;
+    }
+
+    private double sunAzimuthDegrees(String plannedDepartureDateTime) {
+        int minutes = localTimeMinutes(plannedDepartureDateTime);
+        if (minutes < 420 || minutes > 1200) {
+            return 0.0;
+        }
+
+        double daylightProgress = (minutes - 420.0) / (1200.0 - 420.0);
+
+        return 90.0 + daylightProgress * 180.0;
+    }
+
+    private double sunExposureScore(FlightRoute route, Waypoint departureAirport, double sunAzimuthDegrees, String plannedDepartureDateTime) {
+        int minutes = localTimeMinutes(plannedDepartureDateTime);
+        if (minutes < 420 || minutes > 1200) {
+            return 15.0;
+        }
+
+        List<Waypoint> points = new ArrayList<>();
+        points.add(departureAirport);
+        points.addAll(route.waypoints());
+        points.add(departureAirport);
+
+        return pointsForLegs(points).stream()
+                .mapToDouble(leg -> legSunExposureScore(leg.first(), leg.second(), sunAzimuthDegrees))
+                .average()
+                .orElse(60.0);
+    }
+
+    private List<Leg> pointsForLegs(List<Waypoint> points) {
+        List<Leg> legs = new ArrayList<>();
+        for (int i = 0; i < points.size() - 1; i++) {
+            legs.add(new Leg(points.get(i), points.get(i + 1)));
+        }
+
+        return legs;
+    }
+
+    private double legSunExposureScore(Waypoint from, Waypoint to, double sunAzimuthDegrees) {
+        double bearing = bearingDegrees(from, to);
+        double angle = Math.abs(bearing - sunAzimuthDegrees);
+        double smallestAngle = Math.min(angle, 360.0 - angle);
+
+        if (smallestAngle < 25.0) {
+            return 25.0;
+        }
+
+        if (smallestAngle < 45.0) {
+            return 45.0;
+        }
+
+        if (smallestAngle < 80.0) {
+            return 75.0;
+        }
+
+        return 95.0;
+    }
+
+    private double bearingDegrees(Waypoint from, Waypoint to) {
+        double fromLatitude = Math.toRadians(from.latitude());
+        double toLatitude = Math.toRadians(to.latitude());
+        double longitudeDelta = Math.toRadians(to.longitude() - from.longitude());
+        double y = Math.sin(longitudeDelta) * Math.cos(toLatitude);
+        double x = Math.cos(fromLatitude) * Math.sin(toLatitude)
+                - Math.sin(fromLatitude) * Math.cos(toLatitude) * Math.cos(longitudeDelta);
+
+        return (Math.toDegrees(Math.atan2(y, x)) + 360.0) % 360.0;
+    }
+
+    private String sunExposureSummary(double sunExposureScore, double sunAzimuthDegrees) {
+        if (sunAzimuthDegrees == 0.0) {
+            return "Hora con luz solar baja o nocturna; se penaliza para vuelo escenico visual.";
+        }
+
+        if (sunExposureScore >= 80.0) {
+            return "Buena orientacion solar: la ruta evita tramos largos con sol frontal.";
+        }
+
+        if (sunExposureScore >= 55.0) {
+            return "Orientacion solar aceptable, con algun tramo potencialmente incomodo.";
+        }
+
+        return "Orientacion solar desfavorable: varios tramos pueden quedar con sol frontal.";
+    }
+
+    private int localTimeMinutes(String plannedDepartureDateTime) {
+        String localTime = plannedDepartureDateTime.contains("T")
+                ? plannedDepartureDateTime.substring(plannedDepartureDateTime.indexOf('T') + 1)
+                : plannedDepartureDateTime;
+        String[] parts = localTime.split(":");
+
+        return Integer.parseInt(parts[0]) * 60 + Integer.parseInt(parts[1]);
     }
 
     private double normalizedScenicScore(FlightRoute route) {
@@ -664,7 +869,8 @@ public class RecommendationService {
             double estimatedFuelLiters,
             double estimatedCost,
             RouteScore score,
-            WeatherData weatherData
+            WeatherData weatherData,
+            double sunExposureScore
     ) {
         String timeFit = timeFitText(estimatedTimeMinutes, usefulFlightTimeMinutes);
         String scenicFit = score.scenicScore() >= 85.0
@@ -687,6 +893,11 @@ public class RecommendationService {
         String sightseeingFit = sightseeingTimeMinutes > 0.0
                 ? ", incluyendo " + round(sightseeingTimeMinutes) + " minutos de observacion escenica local"
                 : "";
+        String sunFit = sunExposureScore >= 80.0
+                ? " La orientacion solar es favorable para evitar sol frontal."
+                : sunExposureScore >= 55.0
+                ? " La orientacion solar es aceptable para la hora indicada."
+                : " La orientacion solar penaliza la ruta por posibles tramos con sol frontal.";
         String routeExperience = isInterIslandRoute(route) && !isInterIslandPreference(request.preference())
                 ? " Es una travesia entre islas, por lo que se prioriza por debajo de rutas locales salvo preferencia explicita."
                 : "";
@@ -695,7 +906,7 @@ public class RecommendationService {
                 + ", " + costFit + ", " + weatherFit + " y " + preferenceFit + ". Se estiman "
                 + round(estimatedTimeMinutes) + " minutos" + sightseeingFit + ", "
                 + roundOneDecimal(estimatedFuelLiters) + " litros y "
-                + roundTwoDecimals(estimatedCost) + " EUR." + routeExperience;
+                + roundTwoDecimals(estimatedCost) + " EUR." + sunFit + routeExperience;
     }
 
     private boolean routeMatchesPreference(FlightRoute route, String preference) {
@@ -761,6 +972,16 @@ public class RecommendationService {
 
     private double roundTwoDecimals(double value) {
         return Math.round(value * 100.0) / 100.0;
+    }
+
+    private double clampScore(double value) {
+        return Math.max(0.0, Math.min(100.0, value));
+    }
+
+    private record Leg(
+            Waypoint first,
+            Waypoint second
+    ) {
     }
 
     private record ScoredRoute(

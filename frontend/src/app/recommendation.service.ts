@@ -11,6 +11,7 @@ export interface RecommendationRequest {
   fuelPricePerLiter: number | null;
   preference: string;
   safetyMarginPercent: number;
+  plannedDepartureDateTime: string;
 }
 
 export interface Waypoint {
@@ -38,9 +39,15 @@ export interface RecommendedRoute {
   description: string;
   routeType?: RouteType;
   waypoints: Waypoint[];
+  flightPath?: Waypoint[];
+  sightseeingManeuvers?: SightseeingManeuver[];
   approximateDistanceKm: number;
   baseFlightTimeMinutes?: number;
   sightseeingTimeMinutes?: number;
+  plannedDepartureDateTime?: string;
+  sunAzimuthDegrees?: number;
+  sunExposureScore?: number;
+  sunExposureSummary?: string;
   estimatedTimeMinutes: number;
   estimatedTimeHours: number;
   routeDurationCategory: RouteDurationCategory;
@@ -64,6 +71,14 @@ export interface RecommendedRoute {
   };
   explanation: string;
   warnings?: string[];
+}
+
+export interface SightseeingManeuver {
+  waypointName: string;
+  maneuverType: string;
+  minutes: number;
+  radiusKm: number;
+  instruction: string;
 }
 
 export interface RecommendationResponse {

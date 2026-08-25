@@ -89,7 +89,8 @@ Ejemplo de peticion:
   "fuelBurnLitersPerHour": 34,
   "fuelPricePerLiter": 2.3,
   "preference": "coast",
-  "safetyMarginPercent": 15
+  "safetyMarginPercent": 15,
+  "plannedDepartureDateTime": "2026-08-25T10:00"
 }
 ```
 
@@ -103,6 +104,7 @@ Validaciones basicas:
 - `fuelPricePerLiter` mayor o igual que 0.
 - `preference` obligatoria.
 - `safetyMarginPercent` opcional; si se omite se usa 15%.
+- `plannedDepartureDateTime` opcional, fecha/hora local prevista de salida en formato `yyyy-MM-ddTHH:mm`; si se omite se usa la fecha/hora actual.
 
 Respuesta resumida:
 
@@ -120,9 +122,34 @@ Respuesta resumida:
           "longitude": -15.4174
         }
       ],
+      "flightPath": [
+        {
+          "name": "GCLP",
+          "latitude": 27.9319,
+          "longitude": -15.3866
+        },
+        {
+          "name": "Telde",
+          "latitude": 27.9955,
+          "longitude": -15.4174
+        }
+      ],
+      "sightseeingManeuvers": [
+        {
+          "waypointName": "Telde",
+          "maneuverType": "CLOCKWISE_ORBIT",
+          "minutes": 6.0,
+          "radiusKm": 3.0,
+          "instruction": "Realizar una orbita visual alrededor de Telde durante 6.0 minutos, radio aproximado 3.0 km."
+        }
+      ],
       "approximateDistanceKm": 120.5,
       "baseFlightTimeMinutes": 32.0,
       "sightseeingTimeMinutes": 8.0,
+      "plannedDepartureDateTime": "2026-08-25T10:00",
+      "sunAzimuthDegrees": 132.0,
+      "sunExposureScore": 85.0,
+      "sunExposureSummary": "Buena orientacion solar: la ruta evita tramos largos con sol frontal.",
       "estimatedTimeMinutes": 40.0,
       "estimatedTimeHours": 0.53,
       "routeDurationCategory": "GOOD_FIT",
@@ -174,8 +201,12 @@ Campos destacados:
 
 - Distancia: Haversine desde el aeropuerto de salida, pasando por waypoints y cerrando de vuelta al aeropuerto.
 - Tiempo base: distancia / velocidad de crucero, expresado en minutos.
-- Tiempo escenico: minutos adicionales explicitos de observacion local sobre puntos de alto interes visual, con limites por ruta y por waypoint.
+- Tiempo escenico: minutos adicionales explicitos de observacion local sobre puntos de alto interes visual, con limites conservadores por ruta y por waypoint.
 - Tiempo estimado: tiempo base + tiempo escenico.
+- `flightPath`: trayectoria dibujable para el mapa. Incluye aeropuerto, waypoints, regreso y puntos intermedios de orbita cuando hay observacion escenica.
+- `sightseeingManeuvers`: maniobras escenicas explicitas, con waypoint, duracion, radio e instruccion legible.
+- `plannedDepartureDateTime`: fecha y hora local prevista de salida, opcional, en formato `yyyy-MM-ddTHH:mm`. Si no se envia, el backend usa la fecha/hora actual. Se usa para estimar azimut solar y penalizar rutas con tramos de sol frontal.
+- `sunExposureScore`: puntuacion aproximada de orientacion solar. Se mezcla en el `totalScore` para que la misma ruta pueda subir o bajar segun la hora.
 - Combustible: tiempo en horas * consumo por hora.
 - Coste: combustible estimado * precio por litro.
 - `usefulAvailableTimeMinutes`: tiempo disponible menos reserva recomendada del avion y margen de seguridad.
@@ -193,7 +224,7 @@ Campos destacados:
 - `routeDurationCategory`: clasifica cada recomendacion como `TOO_SHORT`, `SHORT`, `GOOD_FIT`, `LONG`, `SLIGHTLY_OVER_TIME` o `TOO_LONG` segun la proporcion entre `estimatedTimeMinutes` y `usefulAvailableTimeMinutes`.
 - Seleccion final: prioriza primero rutas locales, despues encaje temporal, preferencia y score. Las rutas entre islas existen, pero no deben superar a buenas rutas locales salvo preferencia `inter-island`, `islands`, `cross-country` o `adventure`.
 - Tolerancia de tiempo: se permiten rutas hasta 125% del tiempo util; por encima se descartan.
-- Explicacion: indica si la ruta aprovecha poco, bien o demasiado el tiempo disponible, y muestra los minutos de observacion escenica local cuando se han anadido.
+- Explicacion: indica si la ruta aprovecha poco, bien o demasiado el tiempo disponible, y muestra los minutos de observacion escenica local cuando se han anadido. La geometria operativa aparece en `flightPath`.
 
 ## Datos Mock
 

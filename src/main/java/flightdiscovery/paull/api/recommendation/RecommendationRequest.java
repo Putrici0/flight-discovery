@@ -1,9 +1,12 @@
 package flightdiscovery.paull.api.recommendation;
 
+import java.time.LocalDateTime;
+
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 
 public record RecommendationRequest(
         @NotBlank(message = "departureAirport is required")
@@ -28,9 +31,46 @@ public record RecommendationRequest(
 
         @Min(value = 0, message = "safetyMarginPercent must be greater than or equal to 0")
         @Max(value = 100, message = "safetyMarginPercent must be less than or equal to 100")
-        Integer safetyMarginPercent
+        Integer safetyMarginPercent,
+
+        @Pattern(
+                regexp = "^\\d{4}-\\d{2}-\\d{2}T([01]\\d|2[0-3]):[0-5]\\d$",
+                message = "plannedDepartureDateTime must use yyyy-MM-dd'T'HH:mm format"
+        )
+        String plannedDepartureDateTime
 ) {
+    public RecommendationRequest(
+            String departureAirport,
+            int availableFlightTimeMinutes,
+            String aircraftId,
+            Double cruiseSpeedKmh,
+            Double fuelBurnLitersPerHour,
+            Double fuelPricePerLiter,
+            String preference,
+            Integer safetyMarginPercent
+    ) {
+        this(
+                departureAirport,
+                availableFlightTimeMinutes,
+                aircraftId,
+                cruiseSpeedKmh,
+                fuelBurnLitersPerHour,
+                fuelPricePerLiter,
+                preference,
+                safetyMarginPercent,
+                null
+        );
+    }
+
     public int effectiveSafetyMarginPercent() {
         return safetyMarginPercent == null ? 15 : safetyMarginPercent;
+    }
+
+    public String effectivePlannedDepartureDateTime() {
+        if (plannedDepartureDateTime == null || plannedDepartureDateTime.isBlank()) {
+            return LocalDateTime.now().withSecond(0).withNano(0).toString();
+        }
+
+        return plannedDepartureDateTime;
     }
 }

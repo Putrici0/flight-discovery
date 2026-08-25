@@ -32,6 +32,16 @@
       </label>
 
       <label>
+        Fecha y hora local salida
+        <input
+          name="plannedDepartureDateTime"
+          type="datetime-local"
+          [(ngModel)]="form.plannedDepartureDateTime"
+          required
+        >
+      </label>
+
+      <label>
         Margen seguridad (%)
         <input
           name="safetyMarginPercent"
@@ -196,6 +206,14 @@
               <dd>{{ (route.sightseeingTimeMinutes ?? 0) | number:'1.0-0' }} min</dd>
             </div>
             <div>
+              <dt>Hora salida</dt>
+              <dd>{{ route.plannedDepartureDateTime ?? form.plannedDepartureDateTime }}</dd>
+            </div>
+            <div>
+              <dt>Sol frontal</dt>
+              <dd>{{ (route.sunExposureScore ?? 0) | number:'1.0-0' }}</dd>
+            </div>
+            <div>
               <dt>Uso tiempo util</dt>
               <dd>{{ routeUsefulTimeUsagePercent(route) | number:'1.0-0' }}%</dd>
             </div>
@@ -224,6 +242,17 @@
               <dd>{{ route.totalScore | number:'1.0-1' }}</dd>
             </div>
           </dl>
+
+          <div class="maneuvers" *ngIf="route.sightseeingManeuvers?.length">
+            <h4>Maniobras escenicas</h4>
+            <ul>
+              <li *ngFor="let maneuver of route.sightseeingManeuvers ?? []">{{ maneuver.instruction }}</li>
+            </ul>
+          </div>
+
+          <div class="sun-note" *ngIf="route.sunExposureSummary">
+            {{ route.sunExposureSummary }} Azimut solar aprox. {{ route.sunAzimuthDegrees | number:'1.0-0' }}°.
+          </div>
 
           <h4>Desglose de scores</h4>
           <dl class="score-grid">
@@ -334,6 +363,14 @@
               <dd>{{ (route.sightseeingTimeMinutes ?? 0) | number:'1.0-0' }} min</dd>
             </div>
             <div>
+              <dt>Hora salida</dt>
+              <dd>{{ route.plannedDepartureDateTime ?? form.plannedDepartureDateTime }}</dd>
+            </div>
+            <div>
+              <dt>Sol frontal</dt>
+              <dd>{{ (route.sunExposureScore ?? 0) | number:'1.0-0' }}</dd>
+            </div>
+            <div>
               <dt>Uso tiempo util</dt>
               <dd>{{ routeUsefulTimeUsagePercent(route) | number:'1.0-0' }}%</dd>
             </div>
@@ -362,6 +399,14 @@
               <dd>{{ route.totalScore | number:'1.0-1' }}</dd>
             </div>
           </dl>
+          <div class="maneuvers compact-maneuvers" *ngIf="route.sightseeingManeuvers?.length">
+            <ul>
+              <li *ngFor="let maneuver of route.sightseeingManeuvers ?? []">{{ maneuver.instruction }}</li>
+            </ul>
+          </div>
+          <div class="sun-note" *ngIf="route.sunExposureSummary">
+            {{ route.sunExposureSummary }}
+          </div>
           <dl class="score-grid compact">
             <div>
               <dt>Meteo</dt>

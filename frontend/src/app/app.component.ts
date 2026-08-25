@@ -91,6 +91,13 @@ const AIRCRAFT_OPTIONS: AircraftOption[] = [
   }
 ];
 
+function currentLocalDateTimeValue(): string {
+  const now = new Date();
+  const offsetMilliseconds = now.getTimezoneOffset() * 60_000;
+
+  return new Date(now.getTime() - offsetMilliseconds).toISOString().slice(0, 16);
+}
+
 @Component({
   selector: 'app-root',
   standalone: true,
@@ -107,7 +114,8 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     fuelBurnLitersPerHour: 34,
     fuelPricePerLiter: MOCK_FUEL_PRICES['AVGAS_100LL'],
     preference: 'coast',
-    safetyMarginPercent: 15
+    safetyMarginPercent: 15,
+    plannedDepartureDateTime: currentLocalDateTimeValue()
   };
 
   protected readonly airports = AIRPORT_OPTIONS;
@@ -307,6 +315,7 @@ export class AppComponent implements AfterViewInit, OnDestroy {
       this.addRoutePolyline(route, points, isSelected);
 
       if (isSelected) {
+        this.addSightseeingManeuvers(route);
         this.addWaypointMarkers(route);
       }
     });
@@ -331,6 +340,10 @@ export class AppComponent implements AfterViewInit, OnDestroy {
   }
 
   private routePoints(route: RecommendedRoute, departureAirport: AirportLocation): L.LatLngExpression[] {
+    if (route.flightPath?.length) {
+      return route.flightPath.map((point) => [point.latitude, point.longitude] as L.LatLngExpression);
+    }
+
     const departurePoint: L.LatLngExpression = [departureAirport.latitude, departureAirport.longitude];
     const points: L.LatLngExpression[] = [
       departurePoint,
@@ -365,6 +378,28 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     })
       .bindPopup(route.name)
       .addTo(this.routesLayer);
+  }
+
+  private addSightseeingManeuvers(route: RecommendedRoute): void {
+    route.sightseeingManeuvers?.forEach((maneuver) => {
+      const waypoint = route.waypoints.find((candidate) => candidate.name === maneuver.waypointName);
+
+      if (!waypoint) {
+        return;
+      }
+
+      L.circle([waypoint.latitude, waypoint.longitude], {
+        radius: maneuver.radiusKm * 1000,
+        color: '#d9480f',
+        weight: 3,
+        opacity: 0.95,
+        fillColor: '#f97316',
+        fillOpacity: 0.12,
+        dashArray: '8 6'
+      })
+        .bindPopup(maneuver.instruction)
+        .addTo(this.routesLayer);
+    });
   }
 
   private addWaypointMarkers(route: RecommendedRoute): void {
