@@ -303,7 +303,7 @@ No hay base de datos ni integraciones externas reales todavia.
 - Sin restricciones reales de espacio aereo.
 - Sin validacion aeronautica profesional.
 - Sin navegacion ni planificacion operacional.
-- Catalogo pequeno de aeropuertos, aviones, rutas y waypoints visuales.
+- Catalogo pequeño de aeropuertos, aviones, rutas y waypoints visuales.
 - Meteorologia mock por defecto; Open-Meteo es opcional y no debe usarse como fuente aeronautica operacional. Precios por aeropuerto simulados/mock salvo precio manual del usuario.
 
 ## METAR/TAF Futuro
