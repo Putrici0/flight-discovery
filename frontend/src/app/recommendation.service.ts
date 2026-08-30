@@ -12,6 +12,7 @@ export interface RecommendationRequest {
   preference: string;
   safetyMarginPercent: number;
   plannedDepartureDateTime: string;
+  weatherProvider: 'open-meteo' | 'mock';
 }
 
 export interface Waypoint {

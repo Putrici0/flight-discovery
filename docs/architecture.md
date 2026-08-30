@@ -62,7 +62,9 @@ El `weatherScore` sale de `RouteWeatherSummary`: viento alto, precipitacion alta
 
 ## Weather
 
-`weather.provider=mock` es el valor por defecto y selecciona `MockWeatherService`. `weather.provider=open-meteo` selecciona `OpenMeteoWeatherService`.
+`weather.provider=mock` es el valor backend por defecto y selecciona `MockWeatherService`. `weather.provider=open-meteo` selecciona `OpenMeteoWeatherService`.
+
+La request tambien puede incluir `weatherProvider=mock` o `weatherProvider=open-meteo`. Ese valor permite que el frontend active o desactive meteorologia real sin cambiar `application.properties`; si no llega, se usa el proveedor configurado en backend.
 
 `OpenMeteoWeatherService` consulta forecast horario con latitud, longitud y fecha/hora local planificada. Mantiene cache en memoria usando latitud, longitud y hora redondeadas. Si Open-Meteo falla durante una recomendacion, el servicio cae a datos mock controlados para conservar una respuesta explicable.
 
@@ -101,6 +103,8 @@ Las rutas demasiado cortas se tratan de forma explicita:
 
 La generacion usa bandas de duracion para que el conjunto de candidatas no quede sesgado hacia rutas muy cortas. Para cada busqueda intenta conservar rutas `long`, `medium`, `extended` y `short`, y despues rellena con las mejores candidatas restantes. Cuando hay una preferencia como `coast` o `mountain`, reserva la mayoria de las candidatas para rutas que coinciden con la preferencia, pero mantiene alternativas para diversidad.
 
+Para rutas interinsulares desde GCLP, el catalogo mock permite usar puntos de Tenerife como referencias visuales adicionales cuando la preferencia es `inter-island` o `cross-country`. La intencion es proponer rutas recreativas con puntos cercanos de ambas islas, sin convertir esos puntos en autorizaciones operacionales.
+
 Las rutas locales de alto valor visual pueden recibir `sightseeingTimeMinutes`: minutos explicitos de observacion escenica. No se usan para alargar artificialmente el vuelo; aumentan el tiempo estimado, combustible y coste de forma transparente. Los limites actuales son 6 minutos por waypoint, 15 minutos por ruta y un maximo del 20% del tiempo base.
 
 Cuando una ruta incluye observacion escenica, la respuesta devuelve `sightseeingManeuvers` con waypoint, duracion, radio e instruccion, y `flightPath` con puntos intermedios de orbita para que el mapa pinte la maniobra en vez de representar solo lineas rectas entre waypoints.
@@ -130,7 +134,7 @@ Responsabilidades actuales:
 
 - Capturar parametros de busqueda.
 - Llamar al backend mediante proxy `/api`.
-- Mostrar recomendaciones, desglose de score, costes, meteorologia simulada y avisos.
+- Mostrar recomendaciones, desglose de score, costes, selector de proveedor meteorologico y avisos.
 - Visualizar rutas sobre mapa.
 
 ## Datos

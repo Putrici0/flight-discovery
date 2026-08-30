@@ -88,16 +88,16 @@ public final class MockFlightData {
             new VisualWaypoint("gc-costa-sur-lanzarote", "Costa sur de Lanzarote", 29.2000, -13.2000, List.of("GCLP"), List.of("coast", "inter-island", "panoramic", "cross-country"), 87.0),
             new VisualWaypoint("gc-punta-papagayo", "Punta de Papagayo", 29.4000, -13.0000, List.of("GCLP"), List.of("coast", "inter-island", "panoramic", "cross-country"), 89.0),
             new VisualWaypoint("gc-canal-lanzarote", "Canal de Lanzarote", 29.8000, -12.8000, List.of("GCLP"), List.of("coast", "inter-island", "panoramic", "cross-country"), 85.0),
-            new VisualWaypoint("tf-teide", "Teide", 28.2724, -16.6425, List.of("GCTS", "GCXO"), List.of("volcano", "mountain", "panoramic", "island"), 99.0),
-            new VisualWaypoint("tf-los-gigantes", "Acantilados de Los Gigantes", 28.2437, -16.8392, List.of("GCTS", "GCXO"), List.of("coast", "cliffs", "panoramic", "island"), 93.0),
-            new VisualWaypoint("tf-anaga", "Macizo de Anaga", 28.5447, -16.2009, List.of("GCTS", "GCXO"), List.of("mountain", "forest", "coast", "panoramic", "island"), 94.0),
+            new VisualWaypoint("tf-teide", "Teide", 28.2724, -16.6425, List.of("GCLP", "GCTS", "GCXO"), List.of("volcano", "mountain", "panoramic", "island", "inter-island", "cross-country"), 99.0),
+            new VisualWaypoint("tf-los-gigantes", "Acantilados de Los Gigantes", 28.2437, -16.8392, List.of("GCLP", "GCTS", "GCXO"), List.of("coast", "cliffs", "panoramic", "island", "inter-island", "cross-country"), 93.0),
+            new VisualWaypoint("tf-anaga", "Macizo de Anaga", 28.5447, -16.2009, List.of("GCLP", "GCTS", "GCXO"), List.of("mountain", "forest", "coast", "panoramic", "island", "inter-island", "cross-country"), 94.0),
             new VisualWaypoint("tf-la-orotava", "La Orotava", 28.3892, -16.5239, List.of("GCTS", "GCXO"), List.of("historic", "mountain", "panoramic", "island"), 86.0),
             new VisualWaypoint("tf-garachico", "Garachico", 28.3737, -16.7637, List.of("GCTS", "GCXO"), List.of("coast", "historic", "village", "island"), 85.0),
-            new VisualWaypoint("tf-costa-adeje", "Costa Adeje", 28.0866, -16.7350, List.of("GCTS", "GCXO"), List.of("coast", "beach", "short", "island"), 82.0),
+            new VisualWaypoint("tf-costa-adeje", "Costa Adeje", 28.0866, -16.7350, List.of("GCLP", "GCTS", "GCXO"), List.of("coast", "beach", "short", "island", "inter-island", "cross-country"), 82.0),
             new VisualWaypoint("tf-la-laguna", "La Laguna", 28.4874, -16.3159, List.of("GCTS", "GCXO"), List.of("historic", "urban", "island"), 83.0),
-            new VisualWaypoint("tf-punta-de-teno", "Punta de Teno", 28.3424, -16.9227, List.of("GCTS", "GCXO"), List.of("coast", "cliffs", "panoramic", "island"), 91.0),
+            new VisualWaypoint("tf-punta-de-teno", "Punta de Teno", 28.3424, -16.9227, List.of("GCLP", "GCTS", "GCXO"), List.of("coast", "cliffs", "panoramic", "island", "inter-island", "cross-country"), 91.0),
             new VisualWaypoint("tf-corona-forestal", "Corona Forestal", 28.3000, -16.5200, List.of("GCTS", "GCXO"), List.of("forest", "mountain", "volcano", "panoramic"), 90.0),
-            new VisualWaypoint("tf-masca", "Masca", 28.3042, -16.8405, List.of("GCTS", "GCXO"), List.of("mountain", "village", "ravine", "panoramic"), 92.0),
+            new VisualWaypoint("tf-masca", "Masca", 28.3042, -16.8405, List.of("GCLP", "GCTS", "GCXO"), List.of("mountain", "village", "ravine", "panoramic", "inter-island", "cross-country"), 92.0),
             new VisualWaypoint("tf-icod-drago", "Icod de los Vinos y Drago Milenario", 28.3667, -16.7227, List.of("GCTS", "GCXO"), List.of("historic", "village", "island"), 80.0),
             new VisualWaypoint("tf-puerto-de-la-cruz", "Puerto de la Cruz", 28.4133, -16.5482, List.of("GCTS", "GCXO"), List.of("coast", "urban", "historic", "island"), 81.0),
             new VisualWaypoint("tf-playa-de-las-teresitas", "Playa de Las Teresitas", 28.5085, -16.1853, List.of("GCTS", "GCXO"), List.of("coast", "beach", "panoramic"), 84.0),
@@ -105,7 +105,7 @@ public final class MockFlightData {
             new VisualWaypoint("tf-barranco-del-infierno", "Barranco del Infierno", 28.1228, -16.7247, List.of("GCTS", "GCXO"), List.of("ravine", "mountain", "short", "panoramic"), 86.0),
             new VisualWaypoint("tf-el-medano", "El Medano", 28.0465, -16.5360, List.of("GCTS", "GCXO"), List.of("coast", "beach", "short", "island"), 78.0),
             new VisualWaypoint("tf-roque-cinchado", "Roque Cinchado", 28.2236, -16.6320, List.of("GCTS", "GCXO"), List.of("volcano", "mountain", "panoramic"), 88.0),
-            new VisualWaypoint("tf-santa-cruz", "Santa Cruz de Tenerife", 28.4636, -16.2518, List.of("GCTS", "GCXO"), List.of("urban", "coast", "historic"), 76.0)
+            new VisualWaypoint("tf-santa-cruz", "Santa Cruz de Tenerife", 28.4636, -16.2518, List.of("GCLP", "GCTS", "GCXO"), List.of("urban", "coast", "historic", "inter-island", "cross-country"), 76.0)
     );
 
     private static final List<FlightRoute> ROUTES = List.of(
@@ -148,9 +148,13 @@ public final class MockFlightData {
                     RouteType.PREDEFINED,
                     GCLP,
                     List.of(
+                            new Waypoint("Agaete", 28.1005, -15.7004),
                             new Waypoint("Punta de Sardina", 28.1640, -15.7100),
                             new Waypoint("Canal Gran Canaria Tenerife", 28.1800, -16.0000),
-                            new Waypoint("Costa de Guimar", 28.2920, -16.3730)
+                            new Waypoint("Costa de Guimar", 28.2920, -16.3730),
+                            new Waypoint("Candelaria", 28.3548, -16.3727),
+                            new Waypoint("Santa Cruz de Tenerife", 28.4636, -16.2518),
+                            new Waypoint("Macizo de Anaga", 28.5447, -16.2009)
                     ),
                     List.of("islands", "inter-island", "coast", "panoramic", "cross-country"),
                     225.0,

@@ -23,7 +23,7 @@ class RouteCandidateGeneratorTest {
     );
 
     @Test
-    void generatesCircularRoutesWithOneVisualWaypoint() {
+    void generatesScenicRoutesWithLimitedWaypointCount() {
         var routes = generator.generate(MockFlightData.GCLP, 80, 226.0, "coast");
 
         assertTrue(routes.stream().anyMatch(route -> route.id().startsWith("generated-")));
@@ -32,7 +32,9 @@ class RouteCandidateGeneratorTest {
         assertTrue(routes.stream()
                 .filter(route -> route.waypoints().size() == 1)
                 .allMatch(route -> route.routeType() == RouteType.GENERATED_ONE_WAYPOINT));
-        assertTrue(routes.stream().allMatch(route -> route.waypoints().size() <= 2));
+        assertTrue(routes.stream().allMatch(route -> route.waypoints().size() <= 4));
+        assertTrue(routes.stream().anyMatch(route -> route.id().startsWith("generated-corridor-")
+                && route.waypoints().size() > 1));
     }
 
     @Test
@@ -132,11 +134,13 @@ class RouteCandidateGeneratorTest {
     }
 
     @Test
-    void doesNotGenerateThreeOrMoreWaypointRoutesWhenUsefulTimeIsBelowNinetyMinutes() {
+    void doesNotGenerateCombinatorialThreeOrMoreWaypointRoutesWhenUsefulTimeIsBelowNinetyMinutes() {
         var routes = generator.generate(MockFlightData.GCLP, 89, 226.0, "coast");
 
         assertTrue(routes.stream()
-                .noneMatch(route -> route.routeType() == RouteType.GENERATED_THREE_OR_MORE_WAYPOINTS));
+                .noneMatch(route -> route.id().startsWith("generated-three-plus-")));
+        assertTrue(routes.stream()
+                .anyMatch(route -> route.id().startsWith("generated-corridor-")));
     }
 
     @Test
@@ -165,7 +169,8 @@ class RouteCandidateGeneratorTest {
         int maximumGeneratedCandidates = compatibleWaypointCount
                 + compatibleWaypointCount * (compatibleWaypointCount - 1) / 2
                 + 40
-                + 80;
+                + 80
+                + 60;
 
         assertTrue(result.generatedCandidateRoutes() <= maximumGeneratedCandidates);
     }

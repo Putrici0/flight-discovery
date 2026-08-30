@@ -1,6 +1,6 @@
 # Data Sources
 
-El MVP usa datos mock en memoria por defecto. La unica integracion externa opcional es Open-Meteo para meteorologia orientativa cuando se activa `weather.provider=open-meteo`.
+El MVP usa datos mock en memoria por defecto. La unica integracion externa opcional es Open-Meteo para meteorologia orientativa cuando se activa `weather.provider=open-meteo` o cuando la request envia `weatherProvider=open-meteo`.
 
 ## Datos Actuales
 
@@ -66,6 +66,7 @@ Uso actual:
 - Generar rutas circulares de uno o dos waypoints.
 - Crear candidatas por bandas de duracion.
 - Mantener variedad entre rutas costeras, de montana, panoramicas y alternativas.
+- En rutas interinsulares desde GCLP, varios puntos de Tenerife son compatibles como referencias visuales de destino o tramo final para que el sistema no proponga travesias excesivamente pobres en contenido visual.
 
 ### Combustible
 
@@ -104,6 +105,7 @@ Uso actual:
 - Anadir warning indicando que la meteorologia es simulada cuando `isMock=true`.
 - Consultar hasta 3 puntos por ruta: salida, waypoint principal/intermedio y ultimo waypoint antes de volver.
 - Cache en memoria por coordenadas y hora redondeadas.
+- Selector por request: `weatherProvider=open-meteo` para datos reales orientativos o `weatherProvider=mock` para simulacion.
 
 ## Integraciones Futuras
 

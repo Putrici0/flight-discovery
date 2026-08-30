@@ -42,6 +42,8 @@ import flightdiscovery.paull.domain.repository.MockAirportRepository;
 import flightdiscovery.paull.domain.repository.MockFuelPriceRepository;
 import flightdiscovery.paull.domain.repository.MockRouteRepository;
 import flightdiscovery.paull.domain.scoring.RouteScoringService;
+import flightdiscovery.paull.domain.weather.MockWeatherService;
+import flightdiscovery.paull.domain.weather.OpenMeteoWeatherService;
 import flightdiscovery.paull.domain.weather.WeatherServiceException;
 import flightdiscovery.paull.domain.weather.WeatherService;
 
@@ -105,6 +107,7 @@ public class RecommendationService {
 
         Airport departureAirport = resolveDepartureAirport(request.departureAirport());
         FuelPrice fuelPrice = resolveFuelPrice(request, aircraft, departureAirport);
+        WeatherService activeWeatherService = resolveWeatherService(request);
         List<FlightRoute> allPredefinedRoutes = routeRepository.findAll();
         List<FlightRoute> predefinedRoutes = routeRepository.findByDepartureAirportCode(departureAirport.code());
         LOGGER.info("Recommendation diagnostics: predefinedRoutesTotal={} predefinedRoutesForDeparture={} departureAirport={} availableFlightTimeMinutes={} recommendedReserveMinutes={} safetyMarginPercent={} usefulAvailableTimeMinutes={} fuelType={} fuelPricePerLiter={} fuelPriceSource={}",
@@ -134,7 +137,7 @@ public class RecommendationService {
         var scoredRoutes = routesForScoring.stream()
                 .map(route -> new ScoredRoute(
                         route,
-                        toRecommendation(route, request, departureAirport, usefulAvailableTimeMinutes, cruiseSpeedKmh, fuelBurnLitersPerHour, fuelPrice)
+                        toRecommendation(route, request, departureAirport, usefulAvailableTimeMinutes, cruiseSpeedKmh, fuelBurnLitersPerHour, fuelPrice, activeWeatherService)
                 ))
                 .toList();
         var usefulTimeViableRoutes = scoredRoutes.stream()
@@ -168,6 +171,7 @@ public class RecommendationService {
 
         Airport departureAirport = resolveDepartureAirport(request.departureAirport());
         FuelPrice fuelPrice = resolveFuelPrice(request, aircraft, departureAirport);
+        WeatherService activeWeatherService = resolveWeatherService(request);
         List<FlightRoute> predefinedRoutes = routeRepository.findByDepartureAirportCode(departureAirport.code());
         RouteGenerationResult generationResult = routeCandidateGenerator.generateWithDebug(
                 departureAirport,
@@ -181,7 +185,7 @@ public class RecommendationService {
         var scoredRoutes = routesForScoring.stream()
                 .map(route -> new ScoredRoute(
                         route,
-                        toRecommendation(route, request, departureAirport, usefulAvailableTimeMinutes, cruiseSpeedKmh, fuelBurnLitersPerHour, fuelPrice)
+                        toRecommendation(route, request, departureAirport, usefulAvailableTimeMinutes, cruiseSpeedKmh, fuelBurnLitersPerHour, fuelPrice, activeWeatherService)
                 ))
                 .toList();
         var usefulTimeViableRoutes = scoredRoutes.stream()
@@ -431,6 +435,12 @@ public class RecommendationService {
                         (ScoredRoute scoredRoute) -> routeMatchesPreference(scoredRoute.route(), preference)
                 ).reversed())
                 .thenComparing(Comparator.comparingDouble(
+                        (ScoredRoute scoredRoute) -> scoredRoute.recommendation().sunExposureScore()
+                ).reversed())
+                .thenComparing(Comparator.comparingDouble(
+                        (ScoredRoute scoredRoute) -> scoredRoute.recommendation().weatherScore()
+                ).reversed())
+                .thenComparing(Comparator.comparingDouble(
                         (ScoredRoute scoredRoute) -> scoredRoute.recommendation().totalScore()
                 ).reversed());
     }
@@ -576,7 +586,8 @@ public class RecommendationService {
             double usefulFlightTimeMinutes,
             double cruiseSpeedKmh,
             double fuelBurnLitersPerHour,
-            FuelPrice fuelPrice
+            FuelPrice fuelPrice,
+            WeatherService activeWeatherService
     ) {
         double approximateDistanceKm = routeCalculationService.totalDistanceKm(route);
         double baseFlightTimeHours = routeCalculationService.estimatedTimeHours(approximateDistanceKm, cruiseSpeedKmh);
@@ -588,8 +599,8 @@ public class RecommendationService {
         double estimatedCost = routeCalculationService.estimatedCost(estimatedFuelLiters, fuelPrice.pricePerLiter());
         String plannedDepartureDateTime = request.effectivePlannedDepartureDateTime();
         LocalDateTime parsedPlannedDepartureDateTime = LocalDateTime.parse(plannedDepartureDateTime);
-        WeatherData fallbackWeatherData = weatherService.weatherFor(route, parsedPlannedDepartureDateTime);
-        RouteWeatherSummary routeWeatherSummary = routeWeatherSummary(route, departureAirport, parsedPlannedDepartureDateTime, fallbackWeatherData);
+        WeatherData fallbackWeatherData = activeWeatherService.weatherFor(route, parsedPlannedDepartureDateTime);
+        RouteWeatherSummary routeWeatherSummary = routeWeatherSummary(route, departureAirport, parsedPlannedDepartureDateTime, fallbackWeatherData, activeWeatherService);
         WeatherData weatherData = new WeatherData(
                 routeWeatherSummary.averageWindKmh(),
                 routeWeatherSummary.averageCloudCoverPercent(),
@@ -612,7 +623,7 @@ public class RecommendationService {
                 request.preference(),
                 weatherData.weatherScore()
         );
-        double totalScore = round(clampScore(score.totalScore() * 0.85 + sunExposureScore * 0.15));
+        double totalScore = round(clampScore(score.totalScore() * 0.70 + sunExposureScore * 0.30));
 
         return new RecommendedRouteResponse(
                 route.id(),
@@ -669,7 +680,7 @@ public class RecommendationService {
                 recommendation.temperatureCelsius(),
                 recommendation.weatherScore()
         );
-        RouteWeatherSummary routeWeatherSummary = routeWeatherSummary(route, departureAirport, plannedDepartureDateTime, fallbackWeatherData);
+        RouteWeatherSummary routeWeatherSummary = routeWeatherSummary(route, departureAirport, plannedDepartureDateTime, fallbackWeatherData, weatherService);
 
         return new RecommendedRouteResponse(
                 recommendation.id(),
@@ -716,10 +727,11 @@ public class RecommendationService {
             FlightRoute route,
             Airport departureAirport,
             LocalDateTime plannedDepartureDateTime,
-            WeatherData fallbackWeatherData
+            WeatherData fallbackWeatherData,
+            WeatherService activeWeatherService
     ) {
         List<WeatherData> pointWeatherData = routeWeatherPoints(route, departureAirport).stream()
-                .map(point -> weatherForPoint(point, plannedDepartureDateTime, fallbackWeatherData))
+                .map(point -> weatherForPoint(point, plannedDepartureDateTime, fallbackWeatherData, activeWeatherService))
                 .toList();
 
         return new RouteWeatherSummary(
@@ -741,9 +753,14 @@ public class RecommendationService {
         );
     }
 
-    private WeatherData weatherForPoint(Waypoint point, LocalDateTime plannedDepartureDateTime, WeatherData fallbackWeatherData) {
+    private WeatherData weatherForPoint(
+            Waypoint point,
+            LocalDateTime plannedDepartureDateTime,
+            WeatherData fallbackWeatherData,
+            WeatherService activeWeatherService
+    ) {
         try {
-            return weatherService.weatherFor(point.latitude(), point.longitude(), plannedDepartureDateTime);
+            return activeWeatherService.weatherFor(point.latitude(), point.longitude(), plannedDepartureDateTime);
         } catch (WeatherServiceException exception) {
             return fallbackWeatherData;
         }
@@ -1101,6 +1118,19 @@ public class RecommendationService {
                         HttpStatus.BAD_REQUEST,
                         "aircraftId must match a known aircraft"
                 ));
+    }
+
+    private WeatherService resolveWeatherService(RecommendationRequest request) {
+        String requestedProvider = request.requestedWeatherProvider();
+        if ("mock".equals(requestedProvider)) {
+            return new MockWeatherService();
+        }
+
+        if ("open-meteo".equals(requestedProvider)) {
+            return new OpenMeteoWeatherService();
+        }
+
+        return weatherService;
     }
 
     private double resolveCruiseSpeed(RecommendationRequest request, Aircraft aircraft) {

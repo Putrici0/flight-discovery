@@ -108,14 +108,15 @@ function currentLocalDateTimeValue(): string {
 export class AppComponent implements AfterViewInit, OnDestroy {
   protected form: RecommendationRequest = {
     departureAirport: 'GCLP',
-    availableFlightTimeMinutes: 120,
+    availableFlightTimeMinutes: 75,
     aircraftId: 'cessna-172',
     cruiseSpeedKmh: 226,
     fuelBurnLitersPerHour: 34,
     fuelPricePerLiter: MOCK_FUEL_PRICES['AVGAS_100LL'],
     preference: 'coast',
     safetyMarginPercent: 15,
-    plannedDepartureDateTime: currentLocalDateTimeValue()
+    plannedDepartureDateTime: currentLocalDateTimeValue(),
+    weatherProvider: 'open-meteo'
   };
 
   protected readonly airports = AIRPORT_OPTIONS;
@@ -158,6 +159,12 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     html: '<span>Inicio orbita</span>',
     iconSize: [92, 24],
     iconAnchor: [12, 12]
+  });
+  private readonly aircraftProgressIcon = L.divIcon({
+    className: 'aircraft-progress-marker',
+    html: '<span>AV</span>',
+    iconSize: [30, 30],
+    iconAnchor: [15, 15]
   });
 
   constructor(private readonly recommendationService: RecommendationService) {}
@@ -222,11 +229,11 @@ export class AppComponent implements AfterViewInit, OnDestroy {
       case 'PREDEFINED':
         return 'Manual';
       case 'GENERATED_ONE_WAYPOINT':
-        return 'Generada - 1 waypoint';
+        return 'Escenica simple';
       case 'GENERATED_TWO_WAYPOINTS':
-        return 'Generada - 2 waypoints';
+        return 'Escenica corta';
       case 'GENERATED_THREE_OR_MORE_WAYPOINTS':
-        return 'Generada - 3+ waypoints';
+        return 'Escenica con referencias';
       default:
         return 'Manual';
     }
@@ -327,6 +334,9 @@ export class AppComponent implements AfterViewInit, OnDestroy {
       this.addSelectedRoutePath(selectedRoute, departureAirport);
       this.addSightseeingManeuvers(selectedRoute);
       this.addWaypointMarkers(selectedRoute);
+      this.addWeatherOverlay(selectedRoute, departureAirport);
+      this.addSunDirection(selectedRoute, departureAirport);
+      this.addProgressMarkers(selectedRoute, departureAirport);
     }
 
     const selectedBounds = selectedRoute
@@ -389,20 +399,294 @@ export class AppComponent implements AfterViewInit, OnDestroy {
   }
 
   private addSelectedRoutePath(route: RecommendedRoute, departureAirport: AirportLocation): void {
-    const normalLegs = this.selectedRouteNormalLegs(route, departureAirport);
+    const points = this.routePoints(route, departureAirport);
+    this.addRoutePolyline(route, points, true);
 
-    normalLegs.forEach((leg) => {
-      L.polyline(leg, {
-        color: '#d9480f',
-        weight: 6,
-        opacity: 0.96,
-        dashArray: '12 8',
-        lineCap: 'round',
-        lineJoin: 'round'
+    if (route.sightseeingManeuvers?.length) {
+      this.selectedRouteNormalLegs(route, departureAirport).forEach((leg) => {
+        L.polyline(leg, {
+          color: '#7a2e0e',
+          weight: 2,
+          opacity: 0.35,
+          dashArray: '8 10',
+          lineCap: 'round',
+          lineJoin: 'round'
+        })
+          .bindPopup(`${route.name} - tramo base`)
+          .addTo(this.routesLayer);
+      });
+    }
+  }
+
+  private addWeatherOverlay(route: RecommendedRoute, departureAirport: AirportLocation): void {
+    const routePoints = this.routePoints(route, departureAirport);
+    const midpoint = this.pointAtRouteRatio(routePoints, 0.5);
+    if (!midpoint) {
+      return;
+    }
+
+    const precipitation = route.routeWeatherSummary?.maxPrecipitationProbability ?? route.precipitationProbability ?? 0;
+    const cloudCover = route.routeWeatherSummary?.averageCloudCoverPercent ?? route.cloudCoverPercent ?? 0;
+    const wind = route.routeWeatherSummary?.averageWindKmh ?? route.windKmh ?? 0;
+    const visibility = route.routeWeatherSummary?.minVisibilityKm ?? route.visibilityKm ?? 0;
+    const weatherScore = route.routeWeatherSummary?.weatherScore ?? route.weatherScore ?? 0;
+    const color = this.weatherOverlayColor(weatherScore, precipitation, cloudCover, wind, visibility);
+    const popupText = this.weatherPopupText(route, wind, precipitation, cloudCover, visibility, weatherScore);
+
+    L.circle(midpoint, {
+      radius: this.weatherOverlayRadiusMeters(weatherScore, precipitation, cloudCover, wind, visibility),
+      color,
+      weight: 2,
+      opacity: 0.8,
+      fillColor: color,
+      fillOpacity: 0.16
+    })
+      .bindPopup(popupText)
+      .addTo(this.routesLayer);
+
+    L.marker(midpoint, {
+      icon: this.weatherVisualIcon(route, wind, precipitation, cloudCover, visibility, weatherScore),
+      zIndexOffset: 600
+    })
+      .bindPopup(popupText)
+      .addTo(this.routesLayer);
+
+    [0.22, 0.78].forEach((ratio) => {
+      const point = this.pointAtRouteRatio(routePoints, ratio);
+      if (!point) {
+        return;
+      }
+
+      L.circleMarker(point, {
+        radius: 8,
+        color,
+        weight: 2,
+        opacity: 0.9,
+        fillColor: color,
+        fillOpacity: 0.55
       })
-        .bindPopup(route.name)
+        .bindPopup(popupText)
         .addTo(this.routesLayer);
     });
+  }
+
+  private weatherVisualIcon(
+    route: RecommendedRoute,
+    windKmh: number,
+    precipitationProbability: number,
+    cloudCoverPercent: number,
+    visibilityKm: number,
+    weatherScore: number
+  ): L.DivIcon {
+    return L.divIcon({
+      className: [
+        'weather-map-marker',
+        this.weatherMarkerClass(weatherScore),
+        this.cloudMarkerClass(cloudCoverPercent),
+        this.rainMarkerClass(precipitationProbability),
+        this.windMarkerClass(windKmh)
+      ].join(' '),
+      html: `
+        <div
+          class="weather-scene"
+          aria-label="${this.weatherPopupText(route, windKmh, precipitationProbability, cloudCoverPercent, visibilityKm, weatherScore).replace(/<br>/g, '. ')}"
+        >
+          <span class="weather-glow"></span>
+          <span class="cloud cloud-a"></span>
+          <span class="cloud cloud-b"></span>
+          <span class="cloud cloud-c"></span>
+          <span class="wind wind-a"></span>
+          <span class="wind wind-b"></span>
+          <span class="rain rain-a"></span>
+          <span class="rain rain-b"></span>
+          <span class="rain rain-c"></span>
+          <span class="rain rain-d"></span>
+          <span class="rain rain-e"></span>
+          <span class="rain rain-f"></span>
+        </div>
+      `,
+      iconSize: [188, 126],
+      iconAnchor: [94, 126]
+    });
+  }
+
+  private weatherMarkerClass(weatherScore: number): string {
+    if (weatherScore >= 75) {
+      return 'good';
+    }
+
+    if (weatherScore >= 50) {
+      return 'caution';
+    }
+
+    return 'poor';
+  }
+
+  private cloudMarkerClass(cloudCoverPercent: number): string {
+    if (cloudCoverPercent >= 70) {
+      return 'cloud-heavy';
+    }
+
+    if (cloudCoverPercent >= 35) {
+      return 'cloud-medium';
+    }
+
+    return 'cloud-light';
+  }
+
+  private rainMarkerClass(precipitationProbability: number): string {
+    if (precipitationProbability >= 55) {
+      return 'rain-heavy';
+    }
+
+    if (precipitationProbability >= 25) {
+      return 'rain-medium';
+    }
+
+    if (precipitationProbability >= 10) {
+      return 'rain-light';
+    }
+
+    return 'rain-none';
+  }
+
+  private windMarkerClass(windKmh: number): string {
+    if (windKmh >= 32) {
+      return 'wind-strong';
+    }
+
+    if (windKmh >= 18) {
+      return 'wind-medium';
+    }
+
+    return 'wind-light';
+  }
+
+  private weatherOverlayColor(
+    weatherScore: number,
+    precipitationProbability: number,
+    cloudCoverPercent: number,
+    windKmh: number,
+    visibilityKm: number
+  ): string {
+    if (weatherScore < 50 || precipitationProbability >= 50 || windKmh >= 35 || visibilityKm < 10) {
+      return '#b42318';
+    }
+
+    if (weatherScore < 75 || cloudCoverPercent >= 70 || precipitationProbability >= 25 || windKmh >= 25) {
+      return '#d9480f';
+    }
+
+    return '#0f766e';
+  }
+
+  private weatherOverlayRadiusMeters(
+    weatherScore: number,
+    precipitationProbability: number,
+    cloudCoverPercent: number,
+    windKmh: number,
+    visibilityKm: number
+  ): number {
+    const risk = Math.max(
+      0,
+      100 - weatherScore,
+      precipitationProbability,
+      cloudCoverPercent - 40,
+      windKmh * 1.6,
+      (20 - visibilityKm) * 4
+    );
+
+    return 4500 + Math.min(8500, risk * 90);
+  }
+
+  private weatherPopupText(
+    route: RecommendedRoute,
+    windKmh: number,
+    precipitationProbability: number,
+    cloudCoverPercent: number,
+    visibilityKm: number,
+    weatherScore: number
+  ): string {
+    return `Meteo ruta: ${Math.round(weatherScore)}/100<br>`
+      + `Viento medio: ${Math.round(windKmh)} km/h<br>`
+      + `Lluvia max.: ${Math.round(precipitationProbability)}%<br>`
+      + `Nubes: ${Math.round(cloudCoverPercent)}%<br>`
+      + `Visibilidad min.: ${Math.round(visibilityKm)} km<br>`
+      + `Proveedor: ${this.weatherProviderLabel(route)}`;
+  }
+
+  private addSunDirection(route: RecommendedRoute, departureAirport: AirportLocation): void {
+    const sunAzimuth = route.sunAzimuthDegrees ?? 0;
+    if (sunAzimuth <= 0) {
+      return;
+    }
+
+    const start: L.LatLngExpression = [departureAirport.latitude, departureAirport.longitude];
+    const lengthKm = 22;
+    const radians = sunAzimuth * Math.PI / 180;
+    const latitudeOffset = Math.cos(radians) * lengthKm / 111.32;
+    const longitudeScale = 111.32 * Math.cos(departureAirport.latitude * Math.PI / 180);
+    const longitudeOffset = longitudeScale === 0 ? 0 : Math.sin(radians) * lengthKm / longitudeScale;
+    const end: L.LatLngExpression = [
+      departureAirport.latitude + latitudeOffset,
+      departureAirport.longitude + longitudeOffset
+    ];
+
+    L.polyline([start, end], {
+      color: '#f59e0b',
+      weight: 4,
+      opacity: 0.8,
+      dashArray: '3 8'
+    })
+      .bindPopup(`Direccion aproximada del sol: ${Math.round(sunAzimuth)} grados`)
+      .addTo(this.routesLayer);
+  }
+
+  private addProgressMarkers(route: RecommendedRoute, departureAirport: AirportLocation): void {
+    const points = this.routePoints(route, departureAirport);
+    [0.25, 0.5, 0.75].forEach((ratio) => {
+      const point = this.pointAtRouteRatio(points, ratio);
+      if (!point) {
+        return;
+      }
+
+      const elapsedMinutes = Math.round(route.estimatedTimeMinutes * ratio);
+      L.marker(point, {
+        icon: this.aircraftProgressIcon
+      })
+        .bindPopup(`Posicion estimada +${elapsedMinutes} min`)
+        .addTo(this.routesLayer);
+    });
+  }
+
+  private pointAtRouteRatio(points: L.LatLngExpression[], ratio: number): L.LatLngExpression | null {
+    if (points.length === 0) {
+      return null;
+    }
+
+    const latLngs = points.map((point) => L.latLng(point));
+    const segmentDistances = latLngs.slice(1).map((point, index) => latLngs[index].distanceTo(point));
+    const totalDistance = segmentDistances.reduce((total, distance) => total + distance, 0);
+    let targetDistance = totalDistance * ratio;
+
+    for (let index = 0; index < segmentDistances.length; index++) {
+      const segmentDistance = segmentDistances[index];
+      if (targetDistance <= segmentDistance) {
+        const start = latLngs[index];
+        const end = latLngs[index + 1];
+        const segmentRatio = segmentDistance === 0 ? 0 : targetDistance / segmentDistance;
+
+        return [
+          start.lat + (end.lat - start.lat) * segmentRatio,
+          start.lng + (end.lng - start.lng) * segmentRatio
+        ];
+      }
+
+      targetDistance -= segmentDistance;
+    }
+
+    const lastPoint = latLngs[latLngs.length - 1];
+    return [lastPoint.lat, lastPoint.lng];
   }
 
   private selectedRouteNormalLegs(route: RecommendedRoute, departureAirport: AirportLocation): L.LatLngExpression[][] {

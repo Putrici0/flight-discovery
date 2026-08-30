@@ -37,7 +37,13 @@ public record RecommendationRequest(
                 regexp = "^\\d{4}-\\d{2}-\\d{2}T([01]\\d|2[0-3]):[0-5]\\d$",
                 message = "plannedDepartureDateTime must use yyyy-MM-dd'T'HH:mm format"
         )
-        String plannedDepartureDateTime
+        String plannedDepartureDateTime,
+
+        @Pattern(
+                regexp = "^(mock|open-meteo)$",
+                message = "weatherProvider must be mock or open-meteo"
+        )
+        String weatherProvider
 ) {
     public RecommendationRequest(
             String departureAirport,
@@ -58,6 +64,32 @@ public record RecommendationRequest(
                 fuelPricePerLiter,
                 preference,
                 safetyMarginPercent,
+                null,
+                null
+        );
+    }
+
+    public RecommendationRequest(
+            String departureAirport,
+            int availableFlightTimeMinutes,
+            String aircraftId,
+            Double cruiseSpeedKmh,
+            Double fuelBurnLitersPerHour,
+            Double fuelPricePerLiter,
+            String preference,
+            Integer safetyMarginPercent,
+            String plannedDepartureDateTime
+    ) {
+        this(
+                departureAirport,
+                availableFlightTimeMinutes,
+                aircraftId,
+                cruiseSpeedKmh,
+                fuelBurnLitersPerHour,
+                fuelPricePerLiter,
+                preference,
+                safetyMarginPercent,
+                plannedDepartureDateTime,
                 null
         );
     }
@@ -72,5 +104,13 @@ public record RecommendationRequest(
         }
 
         return plannedDepartureDateTime;
+    }
+
+    public String requestedWeatherProvider() {
+        if (weatherProvider == null || weatherProvider.isBlank()) {
+            return null;
+        }
+
+        return weatherProvider.trim().toLowerCase();
     }
 }

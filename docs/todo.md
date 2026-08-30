@@ -14,6 +14,7 @@
 - Ampliar aeropuertos mock.
 - Ampliar aviones mock con mas tipos de combustible y perfiles realistas.
 - Ampliar waypoints visuales por aeropuerto.
+- Mejorar la seleccion de puntos cercanos al camino: detectar waypoints dentro de un corredor de ruta, insertarlos si aportan valor visual y limitar el desvio/tiempo adicional.
 - Validar Open-Meteo contra respuestas reales y documentar limites horarios.
 - Integrar METAR/TAF en una fase posterior mediante AviationWeather: METAR/TAF del aeropuerto de salida y de aeropuertos cercanos o alternativos.
 - Evaluar OpenAIP para espacio aereo.

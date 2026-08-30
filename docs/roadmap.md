@@ -21,12 +21,15 @@
 - `AirportFuelPrice` mock por aeropuerto y tipo de combustible.
 - Precio de combustible manual vs automatico en backend y frontend.
 - Aviso visible de uso no aeronautico.
+- Selector frontend/backend por request para activar Open-Meteo o forzar mock.
+- Mas puntos visuales de ambas islas en rutas interinsulares GCLP-Tenerife.
 
 ## Siguiente Iteracion
 
 - Mejorar UX del frontend para explicar bandas de duracion, warnings y desglose de scoring.
 - Mostrar diagnostico de candidatas en una vista de desarrollo o panel oculto.
 - Ampliar catalogo mock de aeropuertos, aviones, rutas y waypoints.
+- Crear algoritmo de enriquecimiento de rutas que inserte automaticamente waypoints cercanos al corredor sin exceder tiempo disponible.
 - Revisar textos de explicacion para que sean mas claros para pilotos recreativos.
 - Anadir fixtures o snapshots de recomendaciones para detectar regresiones de ranking.
 

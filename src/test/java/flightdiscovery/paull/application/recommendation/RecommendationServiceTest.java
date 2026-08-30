@@ -158,6 +158,18 @@ class RecommendationServiceTest {
     }
 
     @Test
+    void plannedDepartureDateTimeCanChangeTopRecommendation() {
+        var morningRecommendation = recommendationService.recommend(requestWithPlannedDepartureDateTime("2026-08-25T08:00"))
+                .recommendations()
+                .getFirst();
+        var afternoonRecommendation = recommendationService.recommend(requestWithPlannedDepartureDateTime("2026-08-25T18:00"))
+                .recommendations()
+                .getFirst();
+
+        assertNotEquals(morningRecommendation.id(), afternoonRecommendation.id());
+    }
+
+    @Test
     void defaultsPlannedDepartureDateTimeWhenMissing() {
         var recommendation = recommendationService.recommend(requestWithAvailableTime(120))
                 .recommendations()
@@ -521,7 +533,7 @@ class RecommendationServiceTest {
     }
 
     @Test
-    void includesGeneratedCircularRoutesAlongsideExistingRouteCatalog() {
+    void includesGeneratedVisualRoutesAlongsideExistingRouteCatalog() {
         var recommendations = recommendationService.recommend(requestWithAvailableTime(120)).recommendations();
 
         assertTrue(recommendations.stream().anyMatch(recommendation -> recommendation.id().startsWith("generated-")));
@@ -532,7 +544,7 @@ class RecommendationServiceTest {
     }
 
     @Test
-    void generatedCircularRoutesUseOneOrTwoVisualWaypoints() {
+    void generatedVisualRoutesUseOneOrTwoVisualWaypoints() {
         var generatedRoute = recommendationService.recommend(requestWithAvailableTime(120))
                 .recommendations()
                 .stream()

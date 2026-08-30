@@ -33,7 +33,7 @@ El backend queda disponible en:
 http://localhost:8080
 ```
 
-Por defecto el backend usa meteorologia mock:
+Por defecto el backend usa meteorologia mock si la request no indica proveedor:
 
 ```properties
 weather.provider=mock
@@ -57,6 +57,11 @@ Valores admitidos:
 - `open-meteo`: usa `OpenMeteoWeatherService` y consulta Open-Meteo con `latitude`, `longitude` y `plannedDepartureDateTime`.
 
 Para cada recomendacion se consultan hasta 3 puntos de la ruta: aeropuerto de salida, waypoint principal/intermedio y ultimo waypoint antes de volver. Open-Meteo usa una cache simple en memoria con latitud/longitud y hora redondeadas para evitar llamadas repetidas. Si una consulta Open-Meteo falla durante la recomendacion, se usa una respuesta mock controlada para no romper todo el calculo.
+
+El frontend incluye un selector `Meteorologia`:
+
+- `Open-Meteo real orientativa`: envia `weatherProvider=open-meteo` en la request y usa datos reales orientativos cuando la API responde.
+- `Simulada/mock`: envia `weatherProvider=mock` para desarrollo, demos sin red o fallback controlado.
 
 ## Ejecutar Frontend
 
@@ -115,7 +120,8 @@ Ejemplo de peticion:
   "fuelPricePerLiter": 2.3,
   "preference": "coast",
   "safetyMarginPercent": 15,
-  "plannedDepartureDateTime": "2026-08-25T10:00"
+  "plannedDepartureDateTime": "2026-08-25T10:00",
+  "weatherProvider": "open-meteo"
 }
 ```
 
@@ -131,6 +137,7 @@ Validaciones basicas:
 - `preference` obligatoria.
 - `safetyMarginPercent` opcional; si se omite se usa 15%.
 - `plannedDepartureDateTime` opcional, fecha/hora local prevista de salida en formato `yyyy-MM-ddTHH:mm`; si se omite se usa la fecha/hora actual.
+- `weatherProvider` opcional: `open-meteo` o `mock`. Si se omite se usa el proveedor configurado en backend.
 
 Respuesta resumida:
 
@@ -257,6 +264,7 @@ Campos destacados:
 - `usefulAvailableTimeMinutes`: tiempo disponible menos reserva recomendada del avion y margen de seguridad.
 - `targetDurationMinutes`: referencia interna para `timeFitScore`. Se calcula como `usefulAvailableTimeMinutes * 0.85`, pero la seleccion final puede preferir rutas locales mas cortas si son recreativamente mas coherentes.
 - Generacion dinamica: se crean rutas circulares con 1, 2 y, cuando hay al menos 90 minutos utiles, 3 o mas waypoints visuales compatibles con el aeropuerto de salida.
+- Rutas entre islas: el catalogo mock incluye mas puntos de ambas islas para que una travesia pueda proponer referencias visuales cercanas durante el camino, no solo un salto directo.
 - Bandas de duracion para candidatas generadas:
   - `short`: 30% a 50% del tiempo util.
   - `medium`: 50% a 75%.

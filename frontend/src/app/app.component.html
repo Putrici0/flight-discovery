@@ -42,6 +42,18 @@
       </label>
 
       <label>
+        Meteorologia
+        <select
+          name="weatherProvider"
+          [(ngModel)]="form.weatherProvider"
+          required
+        >
+          <option value="open-meteo">Open-Meteo real orientativa</option>
+          <option value="mock">Simulada/mock</option>
+        </select>
+      </label>
+
+      <label>
         Margen seguridad (%)
         <input
           name="safetyMarginPercent"
@@ -267,7 +279,7 @@
           </div>
 
           <div class="sun-note" *ngIf="route.sunExposureSummary">
-            {{ route.sunExposureSummary }} Azimut solar aprox. {{ route.sunAzimuthDegrees | number:'1.0-0' }}°.
+            {{ route.sunExposureSummary }} Azimut solar aprox. {{ route.sunAzimuthDegrees | number:'1.0-0' }} grados.
           </div>
 
           <h4>Desglose de scores</h4>
