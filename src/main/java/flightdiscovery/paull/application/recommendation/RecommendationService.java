@@ -56,9 +56,11 @@ public class RecommendationService {
     private static final double HIGH_SHORT_ROUTE_SCORE = 85.0;
     private static final int MAX_RECOMMENDED_ROUTES_PER_WAYPOINT = 2;
     private static final double LOCAL_ROUTE_SIGHTSEEING_MIN_SCENIC_SCORE = 85.0;
-    private static final double MAX_SIGHTSEEING_ROUTE_RATIO = 0.20;
-    private static final double MAX_SIGHTSEEING_MINUTES_PER_WAYPOINT = 6.0;
-    private static final double MAX_TOTAL_SIGHTSEEING_MINUTES = 15.0;
+    private static final double SIGHTSEEING_TARGET_USEFUL_TIME_RATIO = 0.85;
+    private static final double SIGHTSEEING_AVAILABLE_MARGIN_RATIO = 0.65;
+    private static final double MAX_SIGHTSEEING_ROUTE_RATIO = 0.85;
+    private static final double MAX_SIGHTSEEING_MINUTES_PER_WAYPOINT = 12.0;
+    private static final double MAX_TOTAL_SIGHTSEEING_MINUTES = 30.0;
     private static final double SIGHTSEEING_ORBIT_MIN_RADIUS_KM = 0.8;
     private static final double SIGHTSEEING_ORBIT_MAX_RADIUS_KM = 3.0;
     private static final int SIGHTSEEING_ORBIT_SEGMENTS = 16;
@@ -356,9 +358,50 @@ public class RecommendationService {
             addDiverseRoutes(interIslandRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts, false, false, false, MAX_RECOMMENDATIONS);
         }
 
-        return selectedRoutes.stream()
+        return rebalanceWaypointDiversity(selectedRoutes, sortedRoutes).stream()
                 .sorted(selectionComparator(preference))
                 .toList();
+    }
+
+    private List<ScoredRoute> rebalanceWaypointDiversity(List<ScoredRoute> selectedRoutes, List<ScoredRoute> sortedRoutes) {
+        if (selectedRoutes.size() < MAX_RECOMMENDATIONS) {
+            return selectedRoutes;
+        }
+
+        List<ScoredRoute> rebalancedRoutes = new ArrayList<>();
+        Set<String> waypointSignatures = new HashSet<>();
+        Map<String, Integer> waypointUsageCounts = new HashMap<>();
+        for (ScoredRoute candidate : sortedRoutes) {
+            if (rebalancedRoutes.size() >= MAX_RECOMMENDATIONS) {
+                return rebalancedRoutes;
+            }
+
+            String waypointSignature = waypointSignature(candidate.route());
+            if (waypointSignatures.contains(waypointSignature)
+                    || usesOverrepresentedWaypoint(candidate.route(), waypointUsageCounts)) {
+                continue;
+            }
+
+            rebalancedRoutes.add(candidate);
+            waypointSignatures.add(waypointSignature);
+            recordWaypointUsage(candidate.route(), waypointUsageCounts);
+        }
+
+        for (ScoredRoute candidate : selectedRoutes) {
+            if (rebalancedRoutes.size() >= MAX_RECOMMENDATIONS) {
+                return rebalancedRoutes;
+            }
+
+            String waypointSignature = waypointSignature(candidate.route());
+            if (waypointSignatures.contains(waypointSignature)) {
+                continue;
+            }
+
+            rebalancedRoutes.add(candidate);
+            waypointSignatures.add(waypointSignature);
+        }
+
+        return rebalancedRoutes;
     }
 
     private List<ScoredRoute> sortedBySelection(List<ScoredRoute> scoredRoutes, String preference) {
@@ -427,7 +470,8 @@ public class RecommendationService {
                 continue;
             }
 
-            if (limitRepeatedWaypoints && usesOverrepresentedWaypoint(candidate.route(), waypointUsageCounts)) {
+            if (usesOverrepresentedWaypoint(candidate.route(), waypointUsageCounts)
+                    && (limitRepeatedWaypoints || hasDiverseAlternative(sortedRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts))) {
                 continue;
             }
 
@@ -445,6 +489,18 @@ public class RecommendationService {
             waypointSignatures.add(waypointSignature);
             recordWaypointUsage(candidate.route(), waypointUsageCounts);
         }
+    }
+
+    private boolean hasDiverseAlternative(
+            List<ScoredRoute> sortedRoutes,
+            List<ScoredRoute> selectedRoutes,
+            Set<String> waypointSignatures,
+            Map<String, Integer> waypointUsageCounts
+    ) {
+        return sortedRoutes.stream()
+                .anyMatch(candidate -> !usesOverrepresentedWaypoint(candidate.route(), waypointUsageCounts)
+                        && !waypointSignatures.contains(waypointSignature(candidate.route()))
+                        && selectedRoutes.stream().noneMatch(selectedRoute -> selectedRoute.route().id().equals(candidate.route().id())));
     }
 
     private boolean usesOverrepresentedWaypoint(FlightRoute route, Map<String, Integer> waypointUsageCounts) {
@@ -515,14 +571,14 @@ public class RecommendationService {
         double sightseeingTimeMinutes = sightseeingTimeMinutes(route, baseFlightTimeMinutes, usefulFlightTimeMinutes);
         double estimatedTimeMinutes = baseFlightTimeMinutes + sightseeingTimeMinutes;
         double estimatedTimeHours = estimatedTimeMinutes / 60.0;
-        List<SightseeingManeuverResponse> sightseeingManeuvers = sightseeingManeuvers(route, sightseeingTimeMinutes, cruiseSpeedKmh);
-        List<Waypoint> flightPath = flightPath(route, airportWaypoint(departureAirport), sightseeingManeuvers);
         double estimatedFuelLiters = routeCalculationService.estimatedFuelLiters(estimatedTimeMinutes, fuelBurnLitersPerHour);
         double estimatedCost = routeCalculationService.estimatedCost(estimatedFuelLiters, fuelPrice.pricePerLiter());
         String plannedDepartureDateTime = request.effectivePlannedDepartureDateTime();
         LocalDateTime parsedPlannedDepartureDateTime = LocalDateTime.parse(plannedDepartureDateTime);
         WeatherData weatherData = weatherService.weatherFor(route, parsedPlannedDepartureDateTime);
         double sunAzimuthDegrees = sunAzimuthDegrees(plannedDepartureDateTime);
+        List<SightseeingManeuverResponse> sightseeingManeuvers = sightseeingManeuvers(route, sightseeingTimeMinutes, cruiseSpeedKmh, sunAzimuthDegrees);
+        List<Waypoint> flightPath = flightPath(route, airportWaypoint(departureAirport), sightseeingManeuvers);
         double sunExposureScore = sunExposureScore(route, airportWaypoint(departureAirport), sunAzimuthDegrees, plannedDepartureDateTime);
         RouteScore score = routeScoringService.score(
                 route,
@@ -676,8 +732,8 @@ public class RecommendationService {
             return 0.0;
         }
 
-        double targetComfortableDurationMinutes = usefulFlightTimeMinutes * 0.60;
-        double missingMinutes = targetComfortableDurationMinutes - baseFlightTimeMinutes;
+        double targetComfortableDurationMinutes = usefulFlightTimeMinutes * SIGHTSEEING_TARGET_USEFUL_TIME_RATIO;
+        double missingMinutes = (targetComfortableDurationMinutes - baseFlightTimeMinutes) * SIGHTSEEING_AVAILABLE_MARGIN_RATIO;
         if (missingMinutes <= 0.0) {
             return 0.0;
         }
@@ -704,7 +760,7 @@ public class RecommendationService {
             flightPath.add(waypoint);
             SightseeingManeuverResponse maneuver = sightseeingManeuverFor(waypoint, sightseeingManeuvers);
             if (maneuver != null) {
-                flightPath.addAll(sightseeingOrbit(waypoint, maneuver.radiusKm()));
+                flightPath.addAll(maneuver.orbitPath());
                 flightPath.add(waypoint);
             }
         });
@@ -717,30 +773,50 @@ public class RecommendationService {
     private List<SightseeingManeuverResponse> sightseeingManeuvers(
             FlightRoute route,
             double sightseeingTimeMinutes,
-            double cruiseSpeedKmh
+            double cruiseSpeedKmh,
+            double sunAzimuthDegrees
     ) {
         if (sightseeingTimeMinutes <= 0.0) {
             return List.of();
         }
 
-        List<Waypoint> sightseeingWaypoints = route.waypoints().stream()
-                .filter(waypoint -> route.waypoints().size() == 1 || waypoint.name().equals(route.waypoints().getFirst().name()))
-                .toList();
+        List<Waypoint> sightseeingWaypoints = sightseeingWaypoints(route);
         double sightseeingMinutesPerWaypoint = sightseeingTimeMinutes / sightseeingWaypoints.size();
 
         return sightseeingWaypoints.stream()
                 .map(waypoint -> {
                     double radiusKm = sightseeingOrbitRadiusKm(sightseeingMinutesPerWaypoint, cruiseSpeedKmh);
+                    double preferredViewingBearingDegrees = preferredViewingBearingDegrees(sunAzimuthDegrees);
+                    List<Waypoint> orbitPath = sightseeingOrbit(waypoint, radiusKm, preferredViewingBearingDegrees);
                     return new SightseeingManeuverResponse(
                             waypoint.name(),
-                            "CLOCKWISE_ORBIT",
+                            "SUN_ORIENTED_CLOCKWISE_ORBIT",
                             round(sightseeingMinutesPerWaypoint),
                             round(radiusKm),
-                            "Realizar una orbita visual alrededor de " + waypoint.name()
+                            round(sunAzimuthDegrees),
+                            round(preferredViewingBearingDegrees),
+                            orbitPath,
+                            "Realizar una orbita visual orientada por sol alrededor de " + waypoint.name()
                                     + " durante " + round(sightseeingMinutesPerWaypoint)
-                                    + " minutos, radio aproximado " + round(radiusKm) + " km."
+                                    + " minutos, radio aproximado " + round(radiusKm)
+                                    + " km, iniciando por el sector " + round(preferredViewingBearingDegrees)
+                                    + " grados para mantener el sol lateral y mejorar la observacion."
                     );
                 })
+                .toList();
+    }
+
+    private List<Waypoint> sightseeingWaypoints(FlightRoute route) {
+        if (route.waypoints().isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, Waypoint> selectedWaypoints = new LinkedHashMap<>();
+        addWeatherPoint(selectedWaypoints, route.waypoints().getFirst());
+        addWeatherPoint(selectedWaypoints, route.waypoints().getLast());
+
+        return selectedWaypoints.values().stream()
+                .limit(2)
                 .toList();
     }
 
@@ -763,11 +839,19 @@ public class RecommendationService {
         );
     }
 
-    private List<Waypoint> sightseeingOrbit(Waypoint center, double radiusKm) {
+    private double preferredViewingBearingDegrees(double sunAzimuthDegrees) {
+        if (sunAzimuthDegrees == 0.0) {
+            return 0.0;
+        }
+
+        return (sunAzimuthDegrees + 90.0) % 360.0;
+    }
+
+    private List<Waypoint> sightseeingOrbit(Waypoint center, double radiusKm, double startBearingDegrees) {
         List<Waypoint> orbit = new ArrayList<>();
 
         for (int segment = 0; segment <= SIGHTSEEING_ORBIT_SEGMENTS; segment++) {
-            double angle = 2.0 * Math.PI * segment / SIGHTSEEING_ORBIT_SEGMENTS;
+            double angle = Math.toRadians(startBearingDegrees) + 2.0 * Math.PI * segment / SIGHTSEEING_ORBIT_SEGMENTS;
             double latitudeOffset = radiusKm * Math.cos(angle) / 111.32;
             double longitudeScale = 111.32 * Math.cos(Math.toRadians(center.latitude()));
             double longitudeOffset = longitudeScale == 0.0 ? 0.0 : radiusKm * Math.sin(angle) / longitudeScale;

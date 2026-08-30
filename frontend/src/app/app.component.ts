@@ -153,6 +153,12 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     iconSize: [12, 12],
     iconAnchor: [6, 6]
   });
+  private readonly orbitStartIcon = L.divIcon({
+    className: 'orbit-start-marker',
+    html: '<span>Inicio orbita</span>',
+    iconSize: [92, 24],
+    iconAnchor: [12, 12]
+  });
 
   constructor(private readonly recommendationService: RecommendationService) {}
 
@@ -308,19 +314,17 @@ export class AppComponent implements AfterViewInit, OnDestroy {
 
     this.addAirportMarker(departureAirport);
 
-    this.recommendations.forEach((route, index) => {
-      const isSelected = index === this.selectedRouteIndex;
-      const points = this.routePoints(route, departureAirport);
-
-      this.addRoutePolyline(route, points, isSelected);
-
-      if (isSelected) {
-        this.addSightseeingManeuvers(route);
-        this.addWaypointMarkers(route);
-      }
-    });
+    this.recommendations
+      .filter((_, index) => index !== this.selectedRouteIndex)
+      .forEach((route) => this.addRoutePolyline(route, this.routePoints(route, departureAirport), false));
 
     const selectedRoute = this.selectedRoute();
+    if (selectedRoute) {
+      this.addSelectedRoutePath(selectedRoute, departureAirport);
+      this.addSightseeingManeuvers(selectedRoute);
+      this.addWaypointMarkers(selectedRoute);
+    }
+
     const selectedBounds = selectedRoute
       ? this.routeBounds(this.routePoints(selectedRoute, departureAirport))
       : L.latLngBounds([[departureAirport.latitude, departureAirport.longitude]]);
@@ -370,14 +374,47 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     }
 
     L.polyline(points, {
-      color: isSelected ? '#d9480f' : '#2f80ed',
-      weight: isSelected ? 5 : 3,
-      opacity: isSelected ? 0.95 : 0.42,
+      color: isSelected ? '#d9480f' : '#64748b',
+      weight: isSelected ? 5 : 2,
+      opacity: isSelected ? 0.95 : 0.22,
       lineCap: 'round',
       lineJoin: 'round'
     })
       .bindPopup(route.name)
       .addTo(this.routesLayer);
+  }
+
+  private addSelectedRoutePath(route: RecommendedRoute, departureAirport: AirportLocation): void {
+    const normalLegs = this.selectedRouteNormalLegs(route, departureAirport);
+
+    normalLegs.forEach((leg) => {
+      L.polyline(leg, {
+        color: '#d9480f',
+        weight: 6,
+        opacity: 0.96,
+        dashArray: '12 8',
+        lineCap: 'round',
+        lineJoin: 'round'
+      })
+        .bindPopup(route.name)
+        .addTo(this.routesLayer);
+    });
+  }
+
+  private selectedRouteNormalLegs(route: RecommendedRoute, departureAirport: AirportLocation): L.LatLngExpression[][] {
+    const departurePoint: L.LatLngExpression = [departureAirport.latitude, departureAirport.longitude];
+    const normalPoints: L.LatLngExpression[] = [
+      departurePoint,
+      ...route.waypoints.map((waypoint) => [waypoint.latitude, waypoint.longitude] as L.LatLngExpression),
+      departurePoint
+    ];
+    const legs: L.LatLngExpression[][] = [];
+
+    for (let index = 0; index < normalPoints.length - 1; index++) {
+      legs.push([normalPoints[index], normalPoints[index + 1]]);
+    }
+
+    return legs;
   }
 
   private addSightseeingManeuvers(route: RecommendedRoute): void {
@@ -390,15 +427,37 @@ export class AppComponent implements AfterViewInit, OnDestroy {
 
       L.circle([waypoint.latitude, waypoint.longitude], {
         radius: maneuver.radiusKm * 1000,
-        color: '#d9480f',
-        weight: 3,
-        opacity: 0.95,
-        fillColor: '#f97316',
-        fillOpacity: 0.12,
-        dashArray: '8 6'
+        color: '#7c3aed',
+        weight: 2,
+        opacity: 0.65,
+        fillColor: '#8b5cf6',
+        fillOpacity: 0.08,
+        dashArray: '6 8'
       })
         .bindPopup(maneuver.instruction)
         .addTo(this.routesLayer);
+
+      const orbitPoints = maneuver.orbitPath?.map((point) => [point.latitude, point.longitude] as L.LatLngExpression) ?? [];
+      if (orbitPoints.length > 1) {
+        L.polyline(orbitPoints, {
+          color: '#7c3aed',
+          weight: 5,
+          opacity: 0.95,
+          lineCap: 'round',
+          lineJoin: 'round'
+        })
+          .bindPopup(maneuver.instruction)
+          .addTo(this.routesLayer);
+
+        const firstOrbitPoint = maneuver.orbitPath?.[0];
+        if (firstOrbitPoint) {
+          L.marker([firstOrbitPoint.latitude, firstOrbitPoint.longitude], {
+            icon: this.orbitStartIcon
+          })
+            .bindPopup(`Inicio orbita<br>${maneuver.instruction}`)
+            .addTo(this.routesLayer);
+        }
+      }
     });
   }
 

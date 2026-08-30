@@ -89,6 +89,9 @@ export interface SightseeingManeuver {
   maneuverType: string;
   minutes: number;
   radiusKm: number;
+  sunAzimuthDegrees?: number;
+  preferredViewingBearingDegrees?: number;
+  orbitPath?: Waypoint[];
   instruction: string;
 }
 

@@ -46,6 +46,7 @@ class RecommendationControllerTest {
                 .andExpect(jsonPath("$.recommendations[0].waypoints").isArray())
                 .andExpect(jsonPath("$.recommendations[0].flightPath").isArray())
                 .andExpect(jsonPath("$.recommendations[0].sightseeingManeuvers").isArray())
+                .andExpect(jsonPath("$.recommendations[0].sightseeingManeuvers[0].orbitPath").isArray())
                 .andExpect(jsonPath("$.recommendations[0].approximateDistanceKm").isNumber())
                 .andExpect(jsonPath("$.recommendations[0].estimatedTimeMinutes").isNumber())
                 .andExpect(jsonPath("$.recommendations[0].plannedDepartureDateTime").exists())

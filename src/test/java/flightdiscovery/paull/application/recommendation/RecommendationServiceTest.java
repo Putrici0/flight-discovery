@@ -134,10 +134,11 @@ class RecommendationServiceTest {
                 .orElseThrow();
 
         assertTrue(scenicLocalRecommendation.estimatedTimeMinutes() > scenicLocalRecommendation.baseFlightTimeMinutes());
-        assertTrue(scenicLocalRecommendation.sightseeingTimeMinutes() <= scenicLocalRecommendation.baseFlightTimeMinutes() * 0.20 + 0.01);
+        assertTrue(scenicLocalRecommendation.sightseeingTimeMinutes() <= 30.0);
         assertTrue(scenicLocalRecommendation.flightPath().size() > scenicLocalRecommendation.waypoints().size() + 2);
         assertFalse(scenicLocalRecommendation.sightseeingManeuvers().isEmpty());
         assertTrue(scenicLocalRecommendation.sightseeingManeuvers().getFirst().instruction().contains("orbita visual"));
+        assertFalse(scenicLocalRecommendation.sightseeingManeuvers().getFirst().orbitPath().isEmpty());
         assertTrue(scenicLocalRecommendation.explanation().contains("observacion escenica local"));
     }
 
