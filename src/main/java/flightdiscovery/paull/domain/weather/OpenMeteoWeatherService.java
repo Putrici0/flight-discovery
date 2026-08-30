@@ -4,6 +4,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -29,6 +31,7 @@ public class OpenMeteoWeatherService implements WeatherService {
 
     private final RestClient restClient;
     private final WeatherService fallbackWeatherService;
+    private final Map<String, WeatherData> cache = new ConcurrentHashMap<>();
 
     public OpenMeteoWeatherService() {
         this(RestClient.builder().baseUrl(BASE_URL).build(), new MockWeatherService());
@@ -63,9 +66,17 @@ public class OpenMeteoWeatherService implements WeatherService {
             double longitude,
             LocalDateTime plannedDepartureDateTime
     ) {
+        String cacheKey = cacheKey(latitude, longitude, plannedDepartureDateTime);
+        WeatherData cachedWeatherData = cache.get(cacheKey);
+        if (cachedWeatherData != null) {
+            return cachedWeatherData;
+        }
+
         try {
             OpenMeteoForecastResponse response = fetchForecast(latitude, longitude, plannedDepartureDateTime.toLocalDate());
-            return toWeatherData(response, plannedDepartureDateTime);
+            WeatherData weatherData = toWeatherData(response, plannedDepartureDateTime);
+            cache.put(cacheKey, weatherData);
+            return weatherData;
         } catch (RestClientException | IllegalArgumentException | NullPointerException exception) {
             throw new WeatherServiceException("Unable to retrieve weather data from Open-Meteo", exception);
         }
@@ -102,8 +113,18 @@ public class OpenMeteoWeatherService implements WeatherService {
                 round(precipitationProbability),
                 round(visibilityKm),
                 round(temperatureCelsius),
-                round(weatherScore(windKmh, cloudCoverPercent, precipitationProbability, visibilityKm))
+                round(weatherScore(windKmh, cloudCoverPercent, precipitationProbability, visibilityKm)),
+                "open-meteo",
+                false
         );
+    }
+
+    private String cacheKey(double latitude, double longitude, LocalDateTime plannedDepartureDateTime) {
+        double roundedLatitude = Math.round(latitude * 10.0) / 10.0;
+        double roundedLongitude = Math.round(longitude * 10.0) / 10.0;
+        LocalDateTime roundedHour = plannedDepartureDateTime.truncatedTo(ChronoUnit.HOURS);
+
+        return roundedLatitude + ":" + roundedLongitude + ":" + roundedHour;
     }
 
     private int closestHourlyIndex(List<String> times, LocalDateTime plannedDepartureDateTime) {

@@ -144,15 +144,13 @@ class RecommendationServiceTest {
 
     @Test
     void plannedDepartureDateTimeChangesSunExposureScore() {
-        var morningRecommendation = recommendationService.recommend(requestWithPlannedDepartureDateTime("2026-08-25T08:00"))
-                .recommendations()
-                .getFirst();
-        var afternoonRecommendation = recommendationService.recommend(requestWithPlannedDepartureDateTime("2026-08-25T18:00"))
-                .recommendations()
-                .stream()
-                .filter(recommendation -> recommendation.id().equals(morningRecommendation.id()))
-                .findFirst()
-                .orElseThrow();
+        var morningRecommendations = recommendationService.recommend(requestWithPlannedDepartureDateTime("2026-08-25T08:00"))
+                .recommendations();
+        var afternoonRecommendations = recommendationService.recommend(requestWithPlannedDepartureDateTime("2026-08-25T18:00"))
+                .recommendations();
+        var routePair = firstCommonRoutePair(morningRecommendations, afternoonRecommendations);
+        var morningRecommendation = routePair.first();
+        var afternoonRecommendation = routePair.second();
 
         assertEquals("2026-08-25T08:00", morningRecommendation.plannedDepartureDateTime());
         assertEquals("2026-08-25T18:00", afternoonRecommendation.plannedDepartureDateTime());
@@ -387,7 +385,7 @@ class RecommendationServiceTest {
                 .recommendations()
                 .getFirst();
 
-        assertTrue(recommendation.warnings().contains("La meteorologia todavia es simulada"));
+        assertTrue(recommendation.warnings().contains("La meteorologia usada es simulada/mock"));
     }
 
     @Test
@@ -405,6 +403,11 @@ class RecommendationServiceTest {
         assertTrue(recommendation.precipitationProbability() <= 100.0);
         assertTrue(recommendation.visibilityKm() >= 0.0);
         assertNotNull(recommendation.routeWeatherSummary());
+        assertEquals("mock", recommendation.weatherProvider());
+        assertTrue(recommendation.weatherIsMock());
+        assertEquals("mock", recommendation.routeWeatherSummary().provider());
+        assertTrue(recommendation.routeWeatherSummary().isMock());
+        assertScoreInRange(recommendation.routeWeatherSummary().weatherScore());
         assertTrue(recommendation.routeWeatherSummary().averageWindKmh() >= 0.0);
         assertTrue(recommendation.routeWeatherSummary().maxWindKmh() >= recommendation.routeWeatherSummary().averageWindKmh());
         assertTrue(recommendation.routeWeatherSummary().averageCloudCoverPercent() >= 0.0);
@@ -461,6 +464,9 @@ class RecommendationServiceTest {
 
         assertEquals(2.85, recommendation.fuelPricePerLiter(), 0.01);
         assertEquals("MOCK", recommendation.fuelPriceSource());
+        assertEquals("AVGAS_100LL", recommendation.fuelTypeUsed());
+        assertEquals("GCLP", recommendation.fuelPriceAirportCode());
+        assertTrue(recommendation.fuelPriceIsMock());
     }
 
     @Test
@@ -471,6 +477,9 @@ class RecommendationServiceTest {
 
         assertEquals(1.95, recommendation.fuelPricePerLiter(), 0.01);
         assertEquals("MOCK", recommendation.fuelPriceSource());
+        assertEquals("JET_A1", recommendation.fuelTypeUsed());
+        assertEquals("GCLP", recommendation.fuelPriceAirportCode());
+        assertTrue(recommendation.fuelPriceIsMock());
     }
 
     @Test
@@ -481,6 +490,9 @@ class RecommendationServiceTest {
 
         assertEquals(3.2, recommendation.fuelPricePerLiter(), 0.01);
         assertEquals("MANUAL", recommendation.fuelPriceSource());
+        assertEquals("AVGAS_100LL", recommendation.fuelTypeUsed());
+        assertEquals("GCLP", recommendation.fuelPriceAirportCode());
+        assertFalse(recommendation.fuelPriceIsMock());
     }
 
     @Test
@@ -491,6 +503,21 @@ class RecommendationServiceTest {
 
         assertEquals(3.2, recommendation.fuelPricePerLiter(), 0.01);
         assertEquals("MANUAL", recommendation.fuelPriceSource());
+    }
+
+    @Test
+    void estimatedCostChangesWhenFuelPriceChanges() {
+        var cheaperRecommendation = recommendationService.recommend(requestWithFuelPrice(1.0))
+                .recommendations()
+                .getFirst();
+        var expensiveRecommendation = recommendationService.recommend(requestWithFuelPrice(5.0))
+                .recommendations()
+                .stream()
+                .filter(recommendation -> recommendation.id().equals(cheaperRecommendation.id()))
+                .findFirst()
+                .orElseThrow();
+
+        assertTrue(expensiveRecommendation.estimatedCost() > cheaperRecommendation.estimatedCost());
     }
 
     @Test

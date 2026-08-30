@@ -17,7 +17,7 @@ Capas principales:
 - `flightdiscovery.paull.domain.model`: modelos de aeropuerto, avion, ruta, waypoint, meteorologia, precio y score.
 - `flightdiscovery.paull.domain.repository`: repositorios mock en memoria.
 - `flightdiscovery.paull.domain.scoring`: scoring de rutas.
-- `flightdiscovery.paull.domain.weather`: meteorologia simulada.
+- `flightdiscovery.paull.domain.weather`: meteorologia mock y proveedor Open-Meteo opcional.
 
 ## Flujo de Recomendacion
 
@@ -33,7 +33,8 @@ Capas principales:
    - `long`: 75% - 100%.
    - `extended`: 100% - 125%.
 8. El generador selecciona hasta 30 candidatas buscando variedad de bandas y tipos de ruta. Cuando la preferencia no es interinsular, las rutas locales se ordenan por delante de travesias entre islas.
-9. `RouteScoringService` calcula `weatherScore`, `timeFitScore`, `preferenceScore`, `scenicScore`, `costScore` y `totalScore`.
+9. Para cada ruta se consultan hasta 3 puntos meteorologicos y se crea `RouteWeatherSummary`.
+10. `RouteScoringService` calcula `weatherScore`, `timeFitScore`, `preferenceScore`, `scenicScore`, `costScore` y `totalScore`.
 10. `RecommendationService` calcula tiempo base, tiempo de observacion escenica local, `routeDurationCategory`, diversidad final y devuelve hasta 5 recomendaciones.
 11. Las rutas que superan el tiempo util pero no el 125% se permiten con warning.
 
@@ -43,7 +44,7 @@ El `totalScore` se mantiene entre 0 y 100.
 
 Pesos actuales:
 
-- Meteorologia simulada: 25%.
+- Meteorologia multi-punto: 25%.
 - Encaje temporal: 35%.
 - Interes visual: 25%.
 - Preferencia del usuario: 10%.
@@ -57,7 +58,21 @@ targetDurationMinutes = usefulAvailableTimeMinutes * 0.85
 
 Las rutas entre 70% y 100% del tiempo util puntuan alto, con maximo cerca del 85%. Las rutas entre 100% y 125% se permiten pero se penalizan. Por encima de 125% se descartan.
 
-El `totalScore` penaliza rutas con tag `inter-island` salvo que la preferencia sea `inter-island`, `islands`, `cross-country` o `adventure`. Tambien incorpora una puntuacion solar aproximada basada en `plannedDepartureDateTime`, el azimut solar estimado y el rumbo de los tramos, para penalizar rutas con sol frontal. Ademas, la seleccion final intenta llenar primero el top 5 con rutas locales; las interinsulares se usan como categoria especial, no como forma por defecto de consumir tiempo.
+El `weatherScore` sale de `RouteWeatherSummary`: viento alto, precipitacion alta, nubosidad muy alta y visibilidad baja penalizan; condiciones suaves puntuan alto. El score se limita siempre a 0-100. El `totalScore` penaliza rutas con tag `inter-island` salvo que la preferencia sea `inter-island`, `islands`, `cross-country` o `adventure`. Tambien incorpora una puntuacion solar aproximada basada en `plannedDepartureDateTime`, el azimut solar estimado y el rumbo de los tramos, para penalizar rutas con sol frontal. Ademas, la seleccion final intenta llenar primero el top 5 con rutas locales; las interinsulares se usan como categoria especial, no como forma por defecto de consumir tiempo.
+
+## Weather
+
+`weather.provider=mock` es el valor por defecto y selecciona `MockWeatherService`. `weather.provider=open-meteo` selecciona `OpenMeteoWeatherService`.
+
+`OpenMeteoWeatherService` consulta forecast horario con latitud, longitud y fecha/hora local planificada. Mantiene cache en memoria usando latitud, longitud y hora redondeadas. Si Open-Meteo falla durante una recomendacion, el servicio cae a datos mock controlados para conservar una respuesta explicable.
+
+`RouteWeatherSummary` combina hasta 3 puntos por ruta: salida, waypoint principal/intermedio y ultimo waypoint antes del regreso. Incluye viento medio/maximo, nubosidad media, precipitacion maxima, visibilidad minima, temperatura media, provider e indicador `isMock`.
+
+## Fuel
+
+El modelo `AirportFuelPrice` representa precios por aeropuerto y tipo de combustible: `airportCode`, `fuelType`, `pricePerLiter`, `currency`, `source`, `lastUpdated` e `isMock`.
+
+Si el usuario envia `fuelPricePerLiter`, ese valor manual tiene prioridad. Si lo omite, el backend busca el precio mock por `departureAirport + aircraft.fuelType`. La respuesta expone `fuelPricePerLiter`, `fuelPriceSource`, `fuelPriceIsMock`, `fuelTypeUsed` y `fuelPriceAirportCode`.
 
 Las rutas demasiado cortas se tratan de forma explicita:
 
@@ -95,6 +110,10 @@ Cuando una ruta incluye observacion escenica, la respuesta devuelve `sightseeing
 `POST /api/recommendations/debug` devuelve informacion de desarrollo:
 
 - Request recibida.
+- `plannedDepartureDateTime`.
+- Proveedor weather usado y puntos consultados.
+- Tipo/precio/fuente de combustible usados.
+- `targetDurationMinutes`.
 - Avion resuelto.
 - Tiempo util.
 - Waypoints compatibles.

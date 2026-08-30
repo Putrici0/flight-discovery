@@ -4,6 +4,7 @@ import java.util.List;
 
 import flightdiscovery.paull.domain.model.Aircraft;
 import flightdiscovery.paull.domain.model.Airport;
+import flightdiscovery.paull.domain.model.AirportFuelPrice;
 import flightdiscovery.paull.domain.model.FlightRoute;
 import flightdiscovery.paull.domain.model.FuelPrice;
 import flightdiscovery.paull.domain.model.FuelPriceSource;
@@ -46,6 +47,18 @@ public final class MockFlightData {
             new FuelPrice("AVGAS_100LL", 2.85, FuelPriceSource.MOCK),
             new FuelPrice("JET_A1", 1.95, FuelPriceSource.MOCK),
             new FuelPrice("MOGAS", 1.75, FuelPriceSource.MOCK)
+    );
+
+    private static final List<AirportFuelPrice> AIRPORT_FUEL_PRICES = List.of(
+            new AirportFuelPrice("GCLP", "AVGAS_100LL", 2.85, "EUR", "MOCK_AIRPORT_FUEL_TABLE", java.time.LocalDate.parse("2026-08-30"), true),
+            new AirportFuelPrice("GCLP", "JET_A1", 1.95, "EUR", "MOCK_AIRPORT_FUEL_TABLE", java.time.LocalDate.parse("2026-08-30"), true),
+            new AirportFuelPrice("GCLP", "MOGAS", 1.75, "EUR", "MOCK_AIRPORT_FUEL_TABLE", java.time.LocalDate.parse("2026-08-30"), true),
+            new AirportFuelPrice("GCTS", "AVGAS_100LL", 2.92, "EUR", "MOCK_AIRPORT_FUEL_TABLE", java.time.LocalDate.parse("2026-08-30"), true),
+            new AirportFuelPrice("GCTS", "JET_A1", 2.02, "EUR", "MOCK_AIRPORT_FUEL_TABLE", java.time.LocalDate.parse("2026-08-30"), true),
+            new AirportFuelPrice("GCTS", "MOGAS", 1.82, "EUR", "MOCK_AIRPORT_FUEL_TABLE", java.time.LocalDate.parse("2026-08-30"), true),
+            new AirportFuelPrice("GCXO", "AVGAS_100LL", 2.88, "EUR", "MOCK_AIRPORT_FUEL_TABLE", java.time.LocalDate.parse("2026-08-30"), true),
+            new AirportFuelPrice("GCXO", "JET_A1", 1.98, "EUR", "MOCK_AIRPORT_FUEL_TABLE", java.time.LocalDate.parse("2026-08-30"), true),
+            new AirportFuelPrice("GCXO", "MOGAS", 1.79, "EUR", "MOCK_AIRPORT_FUEL_TABLE", java.time.LocalDate.parse("2026-08-30"), true)
     );
 
     private static final List<VisualWaypoint> VISUAL_WAYPOINTS = List.of(
@@ -191,6 +204,10 @@ public final class MockFlightData {
 
     public static List<FuelPrice> fuelPrices() {
         return FUEL_PRICES;
+    }
+
+    public static List<AirportFuelPrice> airportFuelPrices() {
+        return AIRPORT_FUEL_PRICES;
     }
 
     public static List<FlightRoute> routes() {

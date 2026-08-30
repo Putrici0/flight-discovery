@@ -39,7 +39,9 @@ public class MockWeatherService implements WeatherService {
                 round(precipitationProbability),
                 round(visibilityKm),
                 round(temperatureCelsius),
-                round(weatherScore(windKmh, cloudCoverPercent, precipitationProbability, visibilityKm))
+                round(weatherScore(windKmh, cloudCoverPercent, precipitationProbability, visibilityKm)),
+                "mock",
+                true
         );
     }
 

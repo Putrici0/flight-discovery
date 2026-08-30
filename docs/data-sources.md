@@ -1,6 +1,6 @@
 # Data Sources
 
-El MVP usa datos mock en memoria. No hay integraciones externas activas ni base de datos.
+El MVP usa datos mock en memoria por defecto. La unica integracion externa opcional es Open-Meteo para meteorologia orientativa cuando se activa `weather.provider=open-meteo`.
 
 ## Datos Actuales
 
@@ -71,30 +71,39 @@ Uso actual:
 
 Repositorio mock:
 
+- Aeropuerto ICAO.
 - Tipo de combustible.
 - Precio por litro.
-- Fuente `MOCK`.
+- Moneda.
+- Fuente.
+- Fecha de actualizacion mock.
+- Indicador `isMock`.
 
 Uso actual:
 
-- Si la request no incluye `fuelPricePerLiter`, se usa el precio mock del tipo de combustible del avion.
-- Si la request incluye precio manual, la respuesta marca `fuelPriceSource` como `MANUAL`.
+- Si la request no incluye `fuelPricePerLiter`, se usa el precio mock por aeropuerto y tipo de combustible del avion.
+- Hay datos mock para `GCLP`, `GCTS` y `GCXO`, con `AVGAS_100LL`, `JET_A1` y `MOGAS`.
+- Si la request incluye precio manual, la respuesta marca `fuelPriceSource` como `MANUAL` e `fuelPriceIsMock=false`.
 
 ### Meteorologia
 
-Servicio mock:
+Servicio mock y Open-Meteo opcional:
 
 - Puntuacion meteorologica.
 - Viento.
 - Nubosidad.
 - Probabilidad de precipitacion.
 - Visibilidad.
+- Temperatura.
+- Proveedor e indicador mock.
 
 Uso actual:
 
-- Alimentar `weatherScore`.
+- Alimentar `RouteWeatherSummary` y `weatherScore`.
 - Mostrar campos meteorologicos en la respuesta.
-- Anadir warning indicando que la meteorologia es simulada.
+- Anadir warning indicando que la meteorologia es simulada cuando `isMock=true`.
+- Consultar hasta 3 puntos por ruta: salida, waypoint principal/intermedio y ultimo waypoint antes de volver.
+- Cache en memoria por coordenadas y hora redondeadas.
 
 ## Integraciones Futuras
 
@@ -106,9 +115,19 @@ Uso actual:
 
 ### Meteorologia Real
 
-- Open-Meteo para una primera meteorologia basica.
-- METAR/TAF para aeropuertos que lo soporten.
+- Open-Meteo ya esta preparado para una primera meteorologia basica orientativa.
+- METAR/TAF para aeropuertos que lo soporten queda para una fase posterior.
 - Reglas de evaluacion de viento, visibilidad, techo y fenomenos relevantes.
+
+### METAR/TAF Roadmap
+
+En una fase posterior se integrara AviationWeather para obtener:
+
+- METAR del aeropuerto de salida.
+- TAF del aeropuerto de salida si existe.
+- METAR/TAF de aeropuertos cercanos o alternativos.
+
+No hay integracion METAR/TAF real en esta fase.
 
 ### Operacion y Seguridad
 

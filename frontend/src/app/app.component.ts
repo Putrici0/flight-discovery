@@ -233,7 +233,11 @@ export class AppComponent implements AfterViewInit, OnDestroy {
   }
 
   protected fuelPriceSourceLabel(source?: 'MANUAL' | 'MOCK'): string {
-    return source === 'MANUAL' ? 'Manual' : 'Mock';
+    return source === 'MANUAL' ? 'Manual' : 'Automatico mock';
+  }
+
+  protected weatherProviderLabel(route: RecommendedRoute): string {
+    return route.weatherIsMock ? 'mock' : (route.weatherProvider ?? 'open-meteo');
   }
 
   protected usefulFlightTimeMinutes(): number {

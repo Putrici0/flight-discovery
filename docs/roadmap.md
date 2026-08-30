@@ -14,6 +14,13 @@
 - Endpoint de debug para inspeccionar candidatas, descartes y recomendaciones.
 - Frontend Angular con Leaflet y proxy `/api`.
 - Tests unitarios y de controlador para backend.
+- `weather.provider=mock/open-meteo` con mock por defecto.
+- `OpenMeteoWeatherService` basico con cache en memoria y fallback controlado a mock durante recomendaciones.
+- `RouteWeatherSummary` multi-punto y `weatherScore` calculado desde resumen de ruta.
+- `plannedDepartureDateTime` en request y formulario.
+- `AirportFuelPrice` mock por aeropuerto y tipo de combustible.
+- Precio de combustible manual vs automatico en backend y frontend.
+- Aviso visible de uso no aeronautico.
 
 ## Siguiente Iteracion
 
@@ -25,8 +32,8 @@
 
 ## Datos Reales
 
-- Integrar Open-Meteo para meteorologia basica.
-- Evaluar METAR/TAF para aeropuertos con cobertura.
+- Endurecer Open-Meteo con limites, metricas y tests de integracion opcionales.
+- Evaluar METAR/TAF para aeropuertos con cobertura mediante AviationWeather.
 - Evaluar OpenAIP u otra fuente de espacio aereo.
 - Preparar persistencia para datos geoespaciales si el catalogo crece.
 

@@ -6,6 +6,10 @@ public record RouteWeatherSummary(
         double averageCloudCoverPercent,
         double maxPrecipitationProbability,
         double minVisibilityKm,
-        double averageTemperatureCelsius
+        double averageTemperatureCelsius,
+        double weatherScore,
+        String provider,
+        @com.fasterxml.jackson.annotation.JsonProperty("isMock")
+        boolean isMock
 ) {
 }

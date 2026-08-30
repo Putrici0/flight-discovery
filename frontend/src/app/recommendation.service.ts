@@ -54,9 +54,14 @@ export interface RecommendedRoute {
   estimatedFuelLiters: number;
   fuelPricePerLiter: number;
   fuelPriceSource: 'MANUAL' | 'MOCK';
+  fuelPriceIsMock: boolean;
+  fuelTypeUsed: string;
+  fuelPriceAirportCode?: string;
   estimatedCost: number;
   totalScore: number;
   weatherScore?: number;
+  weatherProvider?: string;
+  weatherIsMock?: boolean;
   windKmh?: number;
   cloudCoverPercent?: number;
   precipitationProbability?: number;
@@ -82,6 +87,9 @@ export interface RouteWeatherSummary {
   maxPrecipitationProbability: number;
   minVisibilityKm: number;
   averageTemperatureCelsius: number;
+  weatherScore: number;
+  provider: string;
+  isMock: boolean;
 }
 
 export interface SightseeingManeuver {

@@ -4,7 +4,7 @@ Flight Discovery es un MVP para recomendar rutas aereas recreativas a pilotos pr
 
 El tiempo disponible se usa como limite operativo y orientacion, no como una obligacion de rellenar minutos. El backend calcula un tiempo util, prioriza rutas recreativas locales con valor visual y solo promueve travesias entre islas cuando el usuario las pide explicitamente o faltan alternativas locales.
 
-Este proyecto no debe usarse para planificacion aeronautica profesional. La meteorologia real via Open-Meteo es opcional y orientativa; todavia no integra METAR/TAF, espacio aereo, NOTAM, performance real de aeronaves ni navegacion en tiempo real.
+Flight Discovery es una herramienta orientativa de recomendacion recreativa. No sustituye la planificacion aeronautica oficial, documentacion operacional, NOTAM, METAR/TAF ni la responsabilidad del piloto.
 
 ## Requisitos
 
@@ -54,7 +54,9 @@ weather.provider=open-meteo
 Valores admitidos:
 
 - `mock`: usa `MockWeatherService`. Es el valor por defecto.
-- `open-meteo`: usa `OpenMeteoWeatherService` y consulta Open-Meteo con coordenadas del aeropuerto de salida y `plannedDepartureDateTime`.
+- `open-meteo`: usa `OpenMeteoWeatherService` y consulta Open-Meteo con `latitude`, `longitude` y `plannedDepartureDateTime`.
+
+Para cada recomendacion se consultan hasta 3 puntos de la ruta: aeropuerto de salida, waypoint principal/intermedio y ultimo waypoint antes de volver. Open-Meteo usa una cache simple en memoria con latitud/longitud y hora redondeadas para evitar llamadas repetidas. Si una consulta Open-Meteo falla durante la recomendacion, se usa una respuesta mock controlada para no romper todo el calculo.
 
 ## Ejecutar Frontend
 
@@ -125,6 +127,7 @@ Validaciones basicas:
 - `cruiseSpeedKmh` opcional; si se omite se usa el valor del avion.
 - `fuelBurnLitersPerHour` opcional; si se omite se usa el valor del avion.
 - `fuelPricePerLiter` mayor o igual que 0.
+- Si `fuelPricePerLiter` se omite o llega como `null`, el backend busca precio mock por `departureAirport` y `aircraft.fuelType`.
 - `preference` obligatoria.
 - `safetyMarginPercent` opcional; si se omite se usa 15%.
 - `plannedDepartureDateTime` opcional, fecha/hora local prevista de salida en formato `yyyy-MM-ddTHH:mm`; si se omite se usa la fecha/hora actual.
@@ -179,9 +182,14 @@ Respuesta resumida:
       "estimatedFuelLiters": 18.1,
       "fuelPricePerLiter": 2.3,
       "fuelPriceSource": "MANUAL",
+      "fuelPriceIsMock": false,
+      "fuelTypeUsed": "AVGAS_100LL",
+      "fuelPriceAirportCode": "GCLP",
       "estimatedCost": 41.63,
       "totalScore": 88.2,
       "weatherScore": 80.0,
+      "weatherProvider": "mock",
+      "weatherIsMock": true,
       "windKmh": 12.0,
       "cloudCoverPercent": 35.0,
       "precipitationProbability": 5.0,
@@ -193,7 +201,10 @@ Respuesta resumida:
         "averageCloudCoverPercent": 42.0,
         "maxPrecipitationProbability": 15.0,
         "minVisibilityKm": 18.0,
-        "averageTemperatureCelsius": 23.5
+        "averageTemperatureCelsius": 23.5,
+        "weatherScore": 80.0,
+        "provider": "mock",
+        "isMock": true
       },
       "scoreBreakdown": {
         "weatherScore": 80.0,
@@ -205,7 +216,7 @@ Respuesta resumida:
       },
       "explanation": "Esta ruta aprovecha bien el tiempo disponible...",
       "warnings": [
-        "La meteorologia todavia es simulada"
+        "La meteorologia usada es simulada/mock"
       ]
     }
   ],
@@ -220,11 +231,13 @@ Respuesta resumida:
 
 ### POST /api/recommendations/debug
 
-Endpoint de diagnostico para desarrollo. Devuelve la request normalizada, avion resuelto, tiempo util disponible, numero de waypoints compatibles, candidatas generadas, descartes, candidatas puntuadas y recomendaciones finales.
+Endpoint de diagnostico para desarrollo. Devuelve la request recibida, `plannedDepartureDateTime`, proveedor meteorologico usado, puntos consultados para weather, avion resuelto, fuel usado, precio usado, origen del precio, tiempo util disponible, objetivo temporal, numero de waypoints compatibles, candidatas generadas, descartes, candidatas puntuadas y recomendaciones finales.
 
 Campos destacados:
 
 - `usefulAvailableTimeMinutes`: tiempo disponible despues de reserva y margen de seguridad. Es la base para decidir si una ruta cabe y para orientar el encaje temporal sin forzar duraciones artificiales.
+- `weatherLookupPoints`: puntos de salida/intermedios usados para el resumen meteorologico multi-punto.
+- `fuelTypeUsed`, `fuelPriceUsed`, `fuelPriceSource`, `fuelPriceIsMock`, `fuelPriceAirportCode`: diagnostico del precio final usado para estimar coste.
 - `candidates`: candidatas evaluadas y descartadas, con `totalScore`, `timeFitScore`, `costScore`, fase de descarte y motivo cuando aplica.
 - `discards`: descartes por generacion, filtro de tiempo o seleccion final.
 - `recommendations`: recomendaciones finales.
@@ -251,8 +264,9 @@ Campos destacados:
   - `extended`: 100% a 125%, permitidas con warning.
 - Generacion por bandas: el generador intenta conservar candidatas `long`, `medium`, `extended` y `short` para evitar que la seleccion quede dominada por rutas muy cortas. Tambien mantiene variedad de tipos de ruta.
 - Meteorologia por ruta recomendada: ademas del valor meteorologico representativo usado por el scoring, se calcula `routeWeatherSummary` consultando hasta 3 puntos: aeropuerto de salida, primer waypoint como waypoint principal y ultimo waypoint antes de volver. Si hay waypoints repetidos o menos puntos disponibles, se reducen las consultas.
-- `routeWeatherSummary`: agrega viento medio y maximo, nubosidad media, probabilidad maxima de precipitacion, visibilidad minima y temperatura media.
-- Scoring: combina `weatherScore`, `timeFitScore`, `preferenceScore`, interes visual y coste. El resumen multi-punto no cambia todavia el scoring. Las rutas `inter-island` reciben una penalizacion por defecto salvo preferencia explicita.
+- `routeWeatherSummary`: agrega viento medio y maximo, nubosidad media, probabilidad maxima de precipitacion, visibilidad minima, temperatura media, `weatherScore`, `provider` e `isMock`.
+- `weatherScore`: se calcula desde el resumen de ruta multi-punto. Penaliza viento alto, precipitacion alta, nubosidad muy alta y visibilidad baja, y siempre se limita a 0-100.
+- Scoring: combina `weatherScore`, `timeFitScore`, `preferenceScore`, interes visual y coste. Las rutas `inter-island` reciben una penalizacion por defecto salvo preferencia explicita.
 - `timeFitScore`: puntua mejor las rutas cercanas a `targetDurationMinutes`, permite rutas hasta el 125% del tiempo util y descarta el encaje temporal por encima de ese margen.
 - Penalizacion de rutas demasiado cortas: si `preference` no es `short`, las rutas por debajo del 40% del tiempo util penalizan mucho y las de 40%-60% penalizan moderadamente. Si `preference` es `short`, esas rutas no se penalizan por duracion.
 - `routeDurationCategory`: clasifica cada recomendacion como `TOO_SHORT`, `SHORT`, `GOOD_FIT`, `LONG`, `SLIGHTLY_OVER_TIME` o `TOO_LONG` segun la proporcion entre `estimatedTimeMinutes` y `usefulAvailableTimeMinutes`.
@@ -269,19 +283,24 @@ El MVP usa datos mock en memoria para:
 - rutas predefinidas
 - waypoints visuales para rutas generadas
 - precios de combustible
+- precios mock por aeropuerto y tipo de combustible (`GCLP`, `GCTS`, `GCXO`; `AVGAS_100LL`, `JET_A1`, `MOGAS`)
 - meteorologia simulada por defecto; opcionalmente Open-Meteo con `weather.provider=open-meteo`
 
 No hay base de datos ni integraciones externas reales todavia.
 
 ## Limitaciones Actuales
 
-- Sin METAR/TAF, OpenAIP ni PostGIS.
+- Sin METAR/TAF reales, OpenAIP ni PostGIS.
 - Sin persistencia.
 - Sin restricciones reales de espacio aereo.
 - Sin validacion aeronautica profesional.
 - Sin navegacion ni planificacion operacional.
 - Catalogo pequeno de aeropuertos, aviones, rutas y waypoints visuales.
-- Meteorologia mock por defecto; Open-Meteo es opcional y no debe usarse como fuente aeronautica operacional. Precios simulados/mock.
+- Meteorologia mock por defecto; Open-Meteo es opcional y no debe usarse como fuente aeronautica operacional. Precios por aeropuerto simulados/mock salvo precio manual del usuario.
+
+## METAR/TAF Futuro
+
+METAR/TAF queda solo en roadmap. En una fase posterior se evaluara AviationWeather para obtener METAR del aeropuerto de salida, TAF del aeropuerto de salida si existe y METAR/TAF de aeropuertos cercanos o alternativos. No hay integracion METAR/TAF implementada en este MVP.
 
 ## Proximos Pasos
 

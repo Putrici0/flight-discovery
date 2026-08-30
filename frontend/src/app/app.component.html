@@ -149,6 +149,10 @@
       </div>
 
       <section class="panel results-panel">
+        <p class="aviation-notice">
+          Flight Discovery es una herramienta orientativa de recomendacion recreativa. No sustituye la planificacion aeronautica oficial, documentacion operacional, NOTAM, METAR/TAF ni la responsabilidad del piloto.
+        </p>
+
         <div class="results-heading">
           <h2>Resultados</h2>
           <span *ngIf="recommendations.length">{{ recommendations.length }} rutas</span>
@@ -238,6 +242,18 @@
               <dd>{{ route.fuelPricePerLiter | currency:'EUR':'symbol':'1.2-2' }}/L {{ fuelPriceSourceLabel(route.fuelPriceSource) }}</dd>
             </div>
             <div>
+              <dt>Tipo fuel usado</dt>
+              <dd>{{ route.fuelTypeUsed }}</dd>
+            </div>
+            <div>
+              <dt>Aeropuerto fuel</dt>
+              <dd>{{ route.fuelPriceAirportCode || form.departureAirport }}</dd>
+            </div>
+            <div>
+              <dt>Precio mock</dt>
+              <dd>{{ route.fuelPriceIsMock ? 'Si' : 'No' }}</dd>
+            </div>
+            <div>
               <dt>Score total</dt>
               <dd>{{ route.totalScore | number:'1.0-1' }}</dd>
             </div>
@@ -278,28 +294,40 @@
             </div>
           </dl>
 
-          <h4>Meteorologia mock</h4>
-          <p class="mock-note">Datos simulados para desarrollo.</p>
+          <h4>Meteorologia</h4>
+          <p class="mock-note" *ngIf="route.weatherIsMock || route.routeWeatherSummary?.isMock">Datos meteorologicos simulados</p>
           <dl class="weather-grid">
             <div>
               <dt>Weather score</dt>
               <dd>{{ (route.weatherScore ?? route.scoreBreakdown.weatherScore) | number:'1.0-0' }}</dd>
             </div>
             <div>
-              <dt>Viento estimado</dt>
-              <dd>{{ (route.windKmh ?? 0) | number:'1.0-0' }} km/h</dd>
+              <dt>Proveedor</dt>
+              <dd>{{ weatherProviderLabel(route) }}</dd>
             </div>
             <div>
-              <dt>Nubosidad estimada</dt>
-              <dd>{{ (route.cloudCoverPercent ?? 0) | number:'1.0-0' }}%</dd>
+              <dt>Viento medio</dt>
+              <dd>{{ (route.routeWeatherSummary?.averageWindKmh ?? route.windKmh ?? 0) | number:'1.0-0' }} km/h</dd>
             </div>
             <div>
-              <dt>Precipitacion</dt>
-              <dd>{{ (route.precipitationProbability ?? 0) | number:'1.0-0' }}%</dd>
+              <dt>Viento max.</dt>
+              <dd>{{ (route.routeWeatherSummary?.maxWindKmh ?? route.windKmh ?? 0) | number:'1.0-0' }} km/h</dd>
             </div>
             <div>
-              <dt>Visibilidad estimada</dt>
-              <dd>{{ (route.visibilityKm ?? 0) | number:'1.0-0' }} km</dd>
+              <dt>Nubosidad media</dt>
+              <dd>{{ (route.routeWeatherSummary?.averageCloudCoverPercent ?? route.cloudCoverPercent ?? 0) | number:'1.0-0' }}%</dd>
+            </div>
+            <div>
+              <dt>Precipitacion max.</dt>
+              <dd>{{ (route.routeWeatherSummary?.maxPrecipitationProbability ?? route.precipitationProbability ?? 0) | number:'1.0-0' }}%</dd>
+            </div>
+            <div>
+              <dt>Visibilidad min.</dt>
+              <dd>{{ (route.routeWeatherSummary?.minVisibilityKm ?? route.visibilityKm ?? 0) | number:'1.0-0' }} km</dd>
+            </div>
+            <div>
+              <dt>Temperatura media</dt>
+              <dd>{{ (route.routeWeatherSummary?.averageTemperatureCelsius ?? route.temperatureCelsius ?? 0) | number:'1.0-0' }} C</dd>
             </div>
           </dl>
 
@@ -395,6 +423,14 @@
               <dd>{{ route.fuelPricePerLiter | currency:'EUR':'symbol':'1.2-2' }}/L {{ fuelPriceSourceLabel(route.fuelPriceSource) }}</dd>
             </div>
             <div>
+              <dt>Tipo fuel</dt>
+              <dd>{{ route.fuelTypeUsed }}</dd>
+            </div>
+            <div>
+              <dt>Fuel mock</dt>
+              <dd>{{ route.fuelPriceIsMock ? 'Si' : 'No' }}</dd>
+            </div>
+            <div>
               <dt>Score total</dt>
               <dd>{{ route.totalScore | number:'1.0-1' }}</dd>
             </div>
@@ -429,27 +465,39 @@
               <dd>{{ route.scoreBreakdown.costScore | number:'1.0-0' }}</dd>
             </div>
           </dl>
-          <p class="mock-note">Meteorologia simulada/mock</p>
+          <p class="mock-note" *ngIf="route.weatherIsMock || route.routeWeatherSummary?.isMock">Datos meteorologicos simulados</p>
           <dl class="weather-grid compact">
             <div>
               <dt>Weather</dt>
               <dd>{{ (route.weatherScore ?? route.scoreBreakdown.weatherScore) | number:'1.0-0' }}</dd>
             </div>
             <div>
-              <dt>Viento</dt>
-              <dd>{{ (route.windKmh ?? 0) | number:'1.0-0' }} km/h</dd>
+              <dt>Proveedor</dt>
+              <dd>{{ weatherProviderLabel(route) }}</dd>
+            </div>
+            <div>
+              <dt>Viento medio</dt>
+              <dd>{{ (route.routeWeatherSummary?.averageWindKmh ?? route.windKmh ?? 0) | number:'1.0-0' }} km/h</dd>
+            </div>
+            <div>
+              <dt>Viento max.</dt>
+              <dd>{{ (route.routeWeatherSummary?.maxWindKmh ?? route.windKmh ?? 0) | number:'1.0-0' }} km/h</dd>
             </div>
             <div>
               <dt>Nubosidad</dt>
-              <dd>{{ (route.cloudCoverPercent ?? 0) | number:'1.0-0' }}%</dd>
+              <dd>{{ (route.routeWeatherSummary?.averageCloudCoverPercent ?? route.cloudCoverPercent ?? 0) | number:'1.0-0' }}%</dd>
             </div>
             <div>
               <dt>Precipitacion</dt>
-              <dd>{{ (route.precipitationProbability ?? 0) | number:'1.0-0' }}%</dd>
+              <dd>{{ (route.routeWeatherSummary?.maxPrecipitationProbability ?? route.precipitationProbability ?? 0) | number:'1.0-0' }}%</dd>
             </div>
             <div>
               <dt>Visibilidad</dt>
-              <dd>{{ (route.visibilityKm ?? 0) | number:'1.0-0' }} km</dd>
+              <dd>{{ (route.routeWeatherSummary?.minVisibilityKm ?? route.visibilityKm ?? 0) | number:'1.0-0' }} km</dd>
+            </div>
+            <div>
+              <dt>Temperatura</dt>
+              <dd>{{ (route.routeWeatherSummary?.averageTemperatureCelsius ?? route.temperatureCelsius ?? 0) | number:'1.0-0' }} C</dd>
             </div>
           </dl>
           <ul class="route-warnings" *ngIf="route.warnings?.length">

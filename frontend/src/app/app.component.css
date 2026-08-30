@@ -133,6 +133,16 @@ select:focus {
   padding: 22px;
 }
 
+.aviation-notice {
+  border-left: 4px solid #b42318;
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  color: #7a271a;
+  background: #fff4ed;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
 .results-heading {
   display: flex;
   justify-content: space-between;
@@ -384,7 +394,7 @@ select:focus {
 }
 
 .weather-grid {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .score-grid.compact,
