@@ -42,6 +42,42 @@ public class RouteScoringService {
         );
     }
 
+    public RouteScore score(
+            FlightRoute route,
+            double estimatedTimeMinutes,
+            double availableTimeMinutes,
+            double estimatedCost,
+            String preference,
+            double weatherScore,
+            double visualOrientationScore
+    ) {
+        double normalizedWeatherScore = clampScore(weatherScore);
+        double normalizedVisualOrientationScore = clampScore(visualOrientationScore);
+        double timeFitScore = timeFitScore(estimatedTimeMinutes, availableTimeMinutes, preference);
+        double preferenceScore = preferenceScore(route, preference);
+        double scenicScore = scenicScore(route);
+        double costScore = costScore(estimatedCost);
+        double totalScore = clampScore(normalizedWeatherScore * 0.23
+                + timeFitScore * 0.30
+                + scenicScore * 0.22
+                + normalizedVisualOrientationScore * 0.12
+                + preferenceScore * 0.08
+                + costScore * 0.05);
+        if (isInterIslandRoute(route) && !isInterIslandPreference(preference)) {
+            totalScore = clampScore(totalScore - 35.0);
+        }
+
+        return new RouteScore(
+                round(normalizedWeatherScore),
+                round(timeFitScore),
+                round(preferenceScore),
+                round(scenicScore),
+                round(normalizedVisualOrientationScore),
+                round(costScore),
+                round(totalScore)
+        );
+    }
+
     public double timeFitScore(double estimatedTimeMinutes, double availableTimeMinutes) {
         return timeFitScore(estimatedTimeMinutes, availableTimeMinutes, null);
     }

@@ -3,6 +3,7 @@ package flightdiscovery.paull.api.recommendation;
 import java.util.List;
 
 import flightdiscovery.paull.domain.model.RouteScore;
+import flightdiscovery.paull.domain.model.RouteLegOrientation;
 import flightdiscovery.paull.domain.model.RouteType;
 import flightdiscovery.paull.domain.model.RouteWeatherSummary;
 import flightdiscovery.paull.domain.model.Waypoint;
@@ -22,6 +23,13 @@ public record RecommendedRouteResponse(
         double sunAzimuthDegrees,
         double sunExposureScore,
         String sunExposureSummary,
+        double visualOrientationScore,
+        double orientationScore,
+        String predominantSunPosition,
+        String recommendedViewingSide,
+        String orientationFavorableReason,
+        List<String> frontalSunLegs,
+        List<RouteLegOrientation> legOrientations,
         double estimatedTimeMinutes,
         double estimatedTimeHours,
         RouteDurationCategory routeDurationCategory,

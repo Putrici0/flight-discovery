@@ -49,6 +49,13 @@ export interface RecommendedRoute {
   sunAzimuthDegrees?: number;
   sunExposureScore?: number;
   sunExposureSummary?: string;
+  visualOrientationScore?: number;
+  orientationScore?: number;
+  predominantSunPosition?: SunPosition;
+  recommendedViewingSide?: ViewingSide;
+  orientationFavorableReason?: string;
+  frontalSunLegs?: string[];
+  legOrientations?: RouteLegOrientation[];
   estimatedTimeMinutes: number;
   estimatedTimeHours: number;
   routeDurationCategory: RouteDurationCategory;
@@ -74,11 +81,29 @@ export interface RecommendedRoute {
     timeFitScore: number;
     preferenceScore: number;
     scenicScore: number;
+    visualOrientationScore?: number;
     costScore: number;
     totalScore: number;
   };
   explanation: string;
   warnings?: string[];
+}
+
+export type SunPosition = 'FRONT' | 'BEHIND' | 'LEFT' | 'RIGHT' | 'LOW_LIGHT' | 'UNKNOWN';
+export type ViewingSide = 'LEFT' | 'RIGHT' | 'FRONT' | 'BEHIND' | 'UNKNOWN';
+
+export interface RouteLegOrientation {
+  fromName: string;
+  toName: string;
+  distanceKm: number;
+  aircraftBearingDegrees: number;
+  sunAzimuthDegrees: number;
+  relativeSunAngleDegrees: number;
+  sunPosition: SunPosition;
+  frontalSunPenalty: number;
+  recommendedViewingSide: ViewingSide;
+  viewingQualityScore: number;
+  explanation: string;
 }
 
 export interface RouteWeatherSummary {

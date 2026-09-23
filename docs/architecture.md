@@ -32,10 +32,11 @@ Capas principales:
    - `medium`: 50% - 75%.
    - `long`: 75% - 100%.
    - `extended`: 100% - 125%.
-8. `RouteCandidateSelectionService` selecciona hasta 80 candidatas buscando variedad de bandas, tipos de ruta y baja similitud entre rutas. Cuando la preferencia no es interinsular, las rutas locales se ordenan por delante de travesias entre islas.
+8. `RouteCandidateSelectionService` selecciona hasta 80 candidatas buscando variedad de bandas, tipos de ruta y baja similitud entre rutas. Cuando la preferencia no es interinsular, las rutas locales se ordenan por delante de travesias entre islas. El generador conserva tambien variantes inversas de rutas multi-waypoint para que el scoring pueda comparar orientacion solar y visual.
 9. Para cada ruta `RouteWeatherSummaryService` consulta hasta 3 puntos meteorologicos y crea `RouteWeatherSummary`.
-10. `RouteScoringService` calcula `weatherScore`, `timeFitScore`, `preferenceScore`, `scenicScore`, `costScore` y `totalScore`.
-10. `SightseeingService` calcula tiempo de observacion escenica local, maniobras y `flightPath`; `SunExposureService` calcula azimut solar, exposicion y resumen de orientacion.
+10. `SunExposureService` calcula azimut solar, rumbo de cada tramo, angulo relativo, lado del sol, penalizacion frontal, lado visual recomendado y `orientationScore`.
+10. `RouteScoringService` calcula `weatherScore`, `timeFitScore`, `preferenceScore`, `scenicScore`, `visualOrientationScore`, `costScore` y `totalScore`.
+10. `SightseeingService` calcula tiempo de observacion escenica local, maniobras y `flightPath`.
 10. `RecommendationSelectionService` aplica la seleccion final diversa, descarta rutas demasiado similares y devuelve hasta 5 recomendaciones.
 11. Las rutas que superan el tiempo util pero no el 125% se permiten con warning.
 
@@ -45,10 +46,11 @@ El `totalScore` se mantiene entre 0 y 100.
 
 Pesos actuales:
 
-- Meteorologia multi-punto: 25%.
-- Encaje temporal: 35%.
-- Interes visual: 25%.
-- Preferencia del usuario: 10%.
+- Meteorologia multi-punto: 23%.
+- Encaje temporal: 30%.
+- Interes visual base: 22%.
+- Calidad visual/orientacion: 12%.
+- Preferencia del usuario: 8%.
 - Coste: 5%.
 
 `timeFitScore` usa una duracion objetivo, no solo un filtro de maximo:
@@ -59,7 +61,9 @@ targetDurationMinutes = usefulAvailableTimeMinutes * 0.85
 
 Las rutas entre 70% y 100% del tiempo util puntuan alto, con maximo cerca del 85%. Las rutas entre 100% y 125% se permiten pero se penalizan. Por encima de 125% se descartan.
 
-El `weatherScore` sale de `RouteWeatherSummary`: viento alto, precipitacion alta, nubosidad muy alta y visibilidad baja penalizan; condiciones suaves puntuan alto. El score se limita siempre a 0-100. El `totalScore` penaliza rutas con tag `inter-island` salvo que la preferencia sea `inter-island`, `islands`, `cross-country` o `adventure`. Tambien incorpora una puntuacion solar aproximada basada en `plannedDepartureDateTime`, el azimut solar estimado y el rumbo de los tramos, para penalizar rutas con sol frontal. Ademas, la seleccion final intenta llenar primero el top 5 con rutas locales; las interinsulares se usan como categoria especial, no como forma por defecto de consumir tiempo.
+El `weatherScore` sale de `RouteWeatherSummary`: viento alto, precipitacion alta, nubosidad muy alta y visibilidad baja penalizan; condiciones suaves puntuan alto. El score se limita siempre a 0-100. El `totalScore` penaliza rutas con tag `inter-island` salvo que la preferencia sea `inter-island`, `islands`, `cross-country` o `adventure`.
+
+La calidad visual/orientacion se calcula en `SunExposureService` con reglas graduales, no binarias. Para cada tramo se obtiene rumbo del avion, azimut solar, angulo relativo, posicion del sol (`FRONT`, `BEHIND`, `LEFT`, `RIGHT`), penalizacion por sol frontal y lado recomendado de vistas cuando puede inferirse desde `VisualWaypoint.preferredViewingBearingDegrees` o, como fallback, desde rutas de costa. `orientationScore` combina exposicion solar y calidad del lado visual; pesa un 12% en el total para que pueda decidir entre variantes parecidas sin dominar meteorologia, tiempo o valor escenico. La respuesta conserva `sunExposureScore` y `sunExposureSummary`, y anade `legOrientations`, `predominantSunPosition`, `recommendedViewingSide`, `frontalSunLegs` y `orientationFavorableReason`.
 
 ## Weather
 
@@ -125,7 +129,7 @@ La API externa no cambia, pero la logica interna se divide en responsabilidades 
 - `RouteCandidateSelectionService`: limita candidatas generadas por preferencia, banda de duracion y tipo de ruta.
 - `RouteSimilarityService`: similitud por waypoints compartidos, proximidad geografica y geometria aproximada.
 - `SightseeingService`: tiempo de observacion, orbitas escenicas y `flightPath`.
-- `SunExposureService`: azimut solar aproximado, puntuacion de exposicion y resumen textual.
+- `SunExposureService`: azimut solar aproximado, orientacion por tramo, penalizacion frontal, lado visual recomendado y resumen textual.
 - `RouteWeatherSummaryService`: puntos meteorologicos por ruta, fallback y agregado multipunto.
 
 ## Debug

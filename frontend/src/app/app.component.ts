@@ -247,6 +247,29 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     return route.weatherIsMock ? 'mock' : (route.weatherProvider ?? 'open-meteo');
   }
 
+  protected sideLabel(side?: string): string {
+    switch (side) {
+      case 'LEFT':
+        return 'izquierda';
+      case 'RIGHT':
+        return 'derecha';
+      case 'BEHIND':
+        return 'detras';
+      case 'FRONT':
+        return 'frente';
+      case 'LOW_LIGHT':
+        return 'luz baja';
+      default:
+        return 'sin determinar';
+    }
+  }
+
+  protected frontalSunLegsText(route: RecommendedRoute): string {
+    return route.frontalSunLegs?.length
+      ? route.frontalSunLegs.join(', ')
+      : 'Sin tramos frontales relevantes';
+  }
+
   protected usefulFlightTimeMinutes(): number {
     const availableAfterReserveMinutes = Math.max(
       0,
@@ -336,6 +359,7 @@ export class AppComponent implements AfterViewInit, OnDestroy {
       this.addWaypointMarkers(selectedRoute);
       this.addWeatherOverlay(selectedRoute, departureAirport);
       this.addSunDirection(selectedRoute, departureAirport);
+      this.addFlightDirectionMarkers(selectedRoute, departureAirport);
       this.addProgressMarkers(selectedRoute, departureAirport);
     }
 
@@ -640,6 +664,41 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     })
       .bindPopup(`Direccion aproximada del sol: ${Math.round(sunAzimuth)} grados`)
       .addTo(this.routesLayer);
+
+    L.marker(end, {
+      icon: L.divIcon({
+        className: 'sun-direction-marker',
+        html: '<span>Sol</span>',
+        iconSize: [46, 24],
+        iconAnchor: [23, 12]
+      })
+    })
+      .bindPopup(`Direccion aproximada del sol: ${Math.round(sunAzimuth)} grados`)
+      .addTo(this.routesLayer);
+  }
+
+  private addFlightDirectionMarkers(route: RecommendedRoute, departureAirport: AirportLocation): void {
+    const legs = this.selectedRouteNormalLegs(route, departureAirport);
+    legs.forEach((leg, index) => {
+      const midpoint = this.midpoint(leg[0], leg[1]);
+      const bearing = route.legOrientations?.[index]?.aircraftBearingDegrees ?? this.bearing(leg[0], leg[1]);
+      const legInfo = route.legOrientations?.[index];
+      const popup = legInfo
+        ? `${legInfo.fromName} -> ${legInfo.toName}<br>Rumbo ${Math.round(legInfo.aircraftBearingDegrees)} grados<br>Sol ${this.sideLabel(legInfo.sunPosition)}`
+        : `Direccion de vuelo ${Math.round(bearing)} grados`;
+
+      L.marker(midpoint, {
+        icon: L.divIcon({
+          className: 'flight-direction-marker',
+          html: `<span style="transform: rotate(${bearing}deg)">▲</span>`,
+          iconSize: [22, 22],
+          iconAnchor: [11, 11]
+        }),
+        zIndexOffset: 500
+      })
+        .bindPopup(popup)
+        .addTo(this.routesLayer);
+    });
   }
 
   private addProgressMarkers(route: RecommendedRoute, departureAirport: AirportLocation): void {
@@ -687,6 +746,26 @@ export class AppComponent implements AfterViewInit, OnDestroy {
 
     const lastPoint = latLngs[latLngs.length - 1];
     return [lastPoint.lat, lastPoint.lng];
+  }
+
+  private midpoint(first: L.LatLngExpression, second: L.LatLngExpression): L.LatLngExpression {
+    const start = L.latLng(first);
+    const end = L.latLng(second);
+
+    return [(start.lat + end.lat) / 2, (start.lng + end.lng) / 2];
+  }
+
+  private bearing(first: L.LatLngExpression, second: L.LatLngExpression): number {
+    const start = L.latLng(first);
+    const end = L.latLng(second);
+    const fromLatitude = start.lat * Math.PI / 180;
+    const toLatitude = end.lat * Math.PI / 180;
+    const longitudeDelta = (end.lng - start.lng) * Math.PI / 180;
+    const y = Math.sin(longitudeDelta) * Math.cos(toLatitude);
+    const x = Math.cos(fromLatitude) * Math.sin(toLatitude)
+      - Math.sin(fromLatitude) * Math.cos(toLatitude) * Math.cos(longitudeDelta);
+
+    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
   }
 
   private selectedRouteNormalLegs(route: RecommendedRoute, departureAirport: AirportLocation): L.LatLngExpression[][] {

@@ -31,6 +31,19 @@ class RouteScoringServiceTest {
     }
 
     @Test
+    void visualOrientationAffectsTotalScoreWithoutDominatingIt() {
+        FlightRoute route = routeWithScenicScoreAndTags(8.0, List.of("coast"));
+
+        RouteScore poorOrientation = scoringService.score(route, 90.0, 120, 100.0, "coast", 80.0, 20.0);
+        RouteScore goodOrientation = scoringService.score(route, 90.0, 120, 100.0, "coast", 80.0, 95.0);
+
+        assertEquals(20.0, poorOrientation.visualOrientationScore(), 0.01);
+        assertEquals(95.0, goodOrientation.visualOrientationScore(), 0.01);
+        assertTrue(goodOrientation.totalScore() > poorOrientation.totalScore());
+        assertTrue(goodOrientation.totalScore() - poorOrientation.totalScore() < 12.0);
+    }
+
+    @Test
     void givesHighestTimeFitNearTargetDuration() {
         double targetTimeFitScore = scoringService.timeFitScore(102.0, 120);
         double shorterHighTimeFitScore = scoringService.timeFitScore(84.0, 120);

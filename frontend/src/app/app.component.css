@@ -389,7 +389,7 @@ select:focus {
 }
 
 .score-grid {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   margin-top: 10px;
 }
 
@@ -500,6 +500,35 @@ dd {
   box-shadow: 0 4px 14px rgba(15, 23, 42, 0.25);
   font-size: 0.62rem;
   font-weight: 900;
+}
+
+.flight-direction-marker span {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid rgba(17, 24, 39, 0.42);
+  background: rgba(255, 255, 255, 0.86);
+  color: #1f2937;
+  font-size: 12px;
+  line-height: 1;
+  transform-origin: center;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18);
+}
+
+.sun-direction-marker span {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(180, 83, 9, 0.38);
+  background: rgba(255, 251, 235, 0.92);
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(146, 64, 14, 0.18);
 }
 
 .weather-map-marker {

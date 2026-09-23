@@ -27,6 +27,7 @@ import flightdiscovery.paull.domain.model.FlightRoute;
 import flightdiscovery.paull.domain.model.FuelPrice;
 import flightdiscovery.paull.domain.model.FuelPriceSource;
 import flightdiscovery.paull.domain.model.RouteScore;
+import flightdiscovery.paull.domain.model.RouteOrientationAnalysis;
 import flightdiscovery.paull.domain.model.RouteWeatherSummary;
 import flightdiscovery.paull.domain.model.WeatherData;
 import flightdiscovery.paull.domain.model.Waypoint;
@@ -360,16 +361,22 @@ public class RecommendationService {
         double sunAzimuthDegrees = sunExposureService.sunAzimuthDegrees(plannedDepartureDateTime);
         List<SightseeingManeuverResponse> sightseeingManeuvers = sightseeingService.sightseeingManeuvers(route, sightseeingTimeMinutes, cruiseSpeedKmh, sunAzimuthDegrees);
         List<Waypoint> flightPath = sightseeingService.flightPath(route, airportWaypoint(departureAirport), sightseeingManeuvers);
-        double sunExposureScore = sunExposureService.sunExposureScore(route, airportWaypoint(departureAirport), sunAzimuthDegrees, plannedDepartureDateTime);
+        RouteOrientationAnalysis orientationAnalysis = sunExposureService.orientationAnalysis(
+                route,
+                airportWaypoint(departureAirport),
+                sunAzimuthDegrees,
+                plannedDepartureDateTime
+        );
         RouteScore score = routeScoringService.score(
                 route,
                 estimatedTimeMinutes,
                 usefulFlightTimeMinutes,
                 estimatedCost,
                 request.preference(),
-                weatherData.weatherScore()
+                weatherData.weatherScore(),
+                orientationAnalysis.orientationScore()
         );
-        double totalScore = round(clampScore(score.totalScore() * 0.70 + sunExposureScore * 0.30));
+        double totalScore = score.totalScore();
 
         return new RecommendedRouteResponse(
                 route.id(),
@@ -384,8 +391,15 @@ public class RecommendationService {
                 round(sightseeingTimeMinutes),
                 plannedDepartureDateTime,
                 round(sunAzimuthDegrees),
-                round(sunExposureScore),
-                sunExposureService.sunExposureSummary(sunExposureScore, sunAzimuthDegrees),
+                round(orientationAnalysis.sunExposureScore()),
+                orientationAnalysis.summary(),
+                round(orientationAnalysis.visualOrientationScore()),
+                round(orientationAnalysis.orientationScore()),
+                orientationAnalysis.predominantSunPosition(),
+                orientationAnalysis.recommendedViewingSide(),
+                orientationAnalysis.favorableReason(),
+                orientationAnalysis.frontalSunLegs(),
+                orientationAnalysis.legs(),
                 round(estimatedTimeMinutes),
                 round(estimatedTimeHours),
                 recommendationTimeService.routeDurationCategory(estimatedTimeMinutes, usefulFlightTimeMinutes),
@@ -407,7 +421,7 @@ public class RecommendationService {
                 weatherData.temperatureCelsius(),
                 routeWeatherSummary,
                 score,
-                explanation(route, request, usefulFlightTimeMinutes, estimatedTimeMinutes, sightseeingTimeMinutes, estimatedFuelLiters, estimatedCost, score, weatherData, sunExposureScore),
+                explanation(route, request, usefulFlightTimeMinutes, estimatedTimeMinutes, sightseeingTimeMinutes, estimatedFuelLiters, estimatedCost, score, weatherData, orientationAnalysis),
                 routeWarnings(estimatedTimeMinutes, usefulFlightTimeMinutes, estimatedCost, weatherData)
         );
     }
@@ -535,7 +549,7 @@ public class RecommendationService {
             double estimatedCost,
             RouteScore score,
             WeatherData weatherData,
-            double sunExposureScore
+            RouteOrientationAnalysis orientationAnalysis
     ) {
         String timeFit = recommendationTimeService.timeFitText(estimatedTimeMinutes, usefulFlightTimeMinutes);
         String scenicFit = score.scenicScore() >= 85.0
@@ -560,11 +574,7 @@ public class RecommendationService {
         String sightseeingFit = sightseeingTimeMinutes > 0.0
                 ? ", incluyendo " + round(sightseeingTimeMinutes) + " minutos de observacion escenica local"
                 : "";
-        String sunFit = sunExposureScore >= 80.0
-                ? " La orientacion solar es favorable para evitar sol frontal."
-                : sunExposureScore >= 55.0
-                ? " La orientacion solar es aceptable para la hora indicada."
-                : " La orientacion solar penaliza la ruta por posibles tramos con sol frontal.";
+        String sunFit = " " + orientationAnalysis.favorableReason();
         String routeExperience = isInterIslandRoute(route) && !isInterIslandPreference(request.preference())
                 ? " Es una travesia entre islas, por lo que se prioriza por debajo de rutas locales salvo preferencia explicita."
                 : "";
@@ -621,10 +631,6 @@ public class RecommendationService {
 
     private double roundTwoDecimals(double value) {
         return Math.round(value * 100.0) / 100.0;
-    }
-
-    private double clampScore(double value) {
-        return Math.max(0.0, Math.min(100.0, value));
     }
 
     private record RecommendationRun(

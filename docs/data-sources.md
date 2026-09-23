@@ -60,12 +60,14 @@ Repositorio mock:
 - Tags.
 - Valor escenico.
 - Aeropuertos de salida compatibles.
+- Rumbo visual preferente opcional (`preferredViewingBearingDegrees`) y pista opcional de lado de vistas (`preferredViewingSideHint`) para representar costas, acantilados o referencias que se disfrutan mejor desde una direccion concreta.
 
 Uso actual:
 
 - Generar rutas circulares de uno o dos waypoints.
 - Crear candidatas por bandas de duracion.
 - Mantener variedad entre rutas costeras, de montana, panoramicas y alternativas.
+- Calcular calidad visual/orientacion por tramo cuando se puede inferir el lado desde el que conviene observar un punto visual.
 - En rutas interinsulares desde GCLP, varios puntos de Tenerife son compatibles como referencias visuales de destino o tramo final para que el sistema no proponga travesias excesivamente pobres en contenido visual.
 
 ### Combustible

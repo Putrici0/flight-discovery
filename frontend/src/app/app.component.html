@@ -226,8 +226,28 @@
               <dd>{{ route.plannedDepartureDateTime ?? form.plannedDepartureDateTime }}</dd>
             </div>
             <div>
-              <dt>Sol frontal</dt>
-              <dd>{{ (route.sunExposureScore ?? 0) | number:'1.0-0' }}</dd>
+              <dt>Orientacion visual</dt>
+              <dd>{{ (route.orientationScore ?? route.sunExposureScore ?? 0) | number:'1.0-0' }}</dd>
+            </div>
+            <div>
+              <dt>Sol predominante</dt>
+              <dd>{{ sideLabel(route.predominantSunPosition) }}</dd>
+            </div>
+            <div>
+              <dt>Lado vistas</dt>
+              <dd>{{ sideLabel(route.recommendedViewingSide) }}</dd>
+            </div>
+            <div>
+              <dt>Orientacion</dt>
+              <dd>{{ (route.orientationScore ?? route.sunExposureScore ?? 0) | number:'1.0-0' }}</dd>
+            </div>
+            <div>
+              <dt>Sol</dt>
+              <dd>{{ sideLabel(route.predominantSunPosition) }}</dd>
+            </div>
+            <div>
+              <dt>Lado vistas</dt>
+              <dd>{{ sideLabel(route.recommendedViewingSide) }}</dd>
             </div>
             <div>
               <dt>Uso tiempo util</dt>
@@ -279,7 +299,20 @@
           </div>
 
           <div class="sun-note" *ngIf="route.sunExposureSummary">
-            {{ route.sunExposureSummary }} Azimut solar aprox. {{ route.sunAzimuthDegrees | number:'1.0-0' }} grados.
+            {{ route.orientationFavorableReason || route.sunExposureSummary }} Azimut solar aprox. {{ route.sunAzimuthDegrees | number:'1.0-0' }} grados.
+            Tramos con sol frontal: {{ frontalSunLegsText(route) }}.
+          </div>
+
+          <div class="maneuvers" *ngIf="route.legOrientations?.length">
+            <h4>Orientacion por tramo</h4>
+            <ul>
+              <li *ngFor="let leg of route.legOrientations ?? []">
+                {{ leg.fromName }} -> {{ leg.toName }}:
+                rumbo {{ leg.aircraftBearingDegrees | number:'1.0-0' }} grados,
+                sol {{ sideLabel(leg.sunPosition) }},
+                vistas {{ sideLabel(leg.recommendedViewingSide) }}.
+              </li>
+            </ul>
           </div>
 
           <h4>Desglose de scores</h4>
@@ -299,6 +332,10 @@
             <div>
               <dt>Visual</dt>
               <dd>{{ route.scoreBreakdown.scenicScore | number:'1.0-0' }}</dd>
+            </div>
+            <div>
+              <dt>Orientacion</dt>
+              <dd>{{ (route.scoreBreakdown.visualOrientationScore ?? route.orientationScore ?? 0) | number:'1.0-0' }}</dd>
             </div>
             <div>
               <dt>Coste</dt>
@@ -453,7 +490,7 @@
             </ul>
           </div>
           <div class="sun-note" *ngIf="route.sunExposureSummary">
-            {{ route.sunExposureSummary }}
+            {{ route.orientationFavorableReason || route.sunExposureSummary }}
           </div>
           <dl class="score-grid compact">
             <div>
@@ -471,6 +508,10 @@
             <div>
               <dt>Visual</dt>
               <dd>{{ route.scoreBreakdown.scenicScore | number:'1.0-0' }}</dd>
+            </div>
+            <div>
+              <dt>Orient.</dt>
+              <dd>{{ (route.scoreBreakdown.visualOrientationScore ?? route.orientationScore ?? 0) | number:'1.0-0' }}</dd>
             </div>
             <div>
               <dt>Coste</dt>

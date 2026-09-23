@@ -9,6 +9,19 @@ public record VisualWaypoint(
         double longitude,
         List<String> compatibleDepartureAirportCodes,
         List<String> tags,
-        double scenicValue
+        double scenicValue,
+        Double preferredViewingBearingDegrees,
+        String preferredViewingSideHint
 ) {
+    public VisualWaypoint(
+            String id,
+            String name,
+            double latitude,
+            double longitude,
+            List<String> compatibleDepartureAirportCodes,
+            List<String> tags,
+            double scenicValue
+    ) {
+        this(id, name, latitude, longitude, compatibleDepartureAirportCodes, tags, scenicValue, null, null);
+    }
 }

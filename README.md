@@ -183,6 +183,27 @@ Respuesta resumida:
       "sunAzimuthDegrees": 132.0,
       "sunExposureScore": 85.0,
       "sunExposureSummary": "Buena orientacion solar: la ruta evita tramos largos con sol frontal.",
+      "visualOrientationScore": 82.0,
+      "orientationScore": 83.8,
+      "predominantSunPosition": "LEFT",
+      "recommendedViewingSide": "RIGHT",
+      "orientationFavorableReason": "En esta variante el sol queda principalmente a la izquierda, con mejores vistas estimadas por el lado derecha y sin tramos largos claramente frontales.",
+      "frontalSunLegs": [],
+      "legOrientations": [
+        {
+          "fromName": "GCLP",
+          "toName": "Maspalomas",
+          "distanceKm": 27.4,
+          "aircraftBearingDegrees": 221.0,
+          "sunAzimuthDegrees": 132.0,
+          "relativeSunAngleDegrees": -89.0,
+          "sunPosition": "LEFT",
+          "frontalSunPenalty": 0.0,
+          "recommendedViewingSide": "RIGHT",
+          "viewingQualityScore": 82.0,
+          "explanation": "sol por la izquierda, vista recomendada por derecha, penalizacion frontal 0.0, calidad visual 82.0."
+        }
+      ],
       "estimatedTimeMinutes": 40.0,
       "estimatedTimeHours": 0.53,
       "routeDurationCategory": "GOOD_FIT",
@@ -218,6 +239,7 @@ Respuesta resumida:
         "timeFitScore": 100.0,
         "preferenceScore": 100.0,
         "scenicScore": 88.0,
+        "visualOrientationScore": 83.8,
         "costScore": 100.0,
         "totalScore": 88.2
       },
@@ -257,8 +279,11 @@ Campos destacados:
 - Tiempo estimado: tiempo base + tiempo escenico.
 - `flightPath`: trayectoria dibujable para el mapa. Incluye aeropuerto, waypoints, regreso y puntos intermedios de orbita cuando hay observacion escenica.
 - `sightseeingManeuvers`: maniobras escenicas explicitas, con waypoint, duracion, radio e instruccion legible.
-- `plannedDepartureDateTime`: fecha y hora local prevista de salida, opcional, en formato `yyyy-MM-ddTHH:mm`. Si no se envia, el backend usa la fecha/hora actual. Se usa para estimar azimut solar y penalizar rutas con tramos de sol frontal.
-- `sunExposureScore`: puntuacion aproximada de orientacion solar. Se mezcla en el `totalScore` para que la misma ruta pueda subir o bajar segun la hora.
+- `plannedDepartureDateTime`: fecha y hora local prevista de salida, opcional, en formato `yyyy-MM-ddTHH:mm`. Si no se envia, el backend usa la fecha/hora actual. Se usa para estimar azimut solar y comparar la orientacion de cada tramo.
+- `sunExposureScore`: puntuacion aproximada de exposicion solar. Baja gradualmente cuando una parte significativa de la ruta queda con el sol de frente.
+- `legOrientations`: analisis por tramo con rumbo del avion, azimut solar, angulo relativo, posicion del sol (`FRONT`, `BEHIND`, `LEFT`, `RIGHT`), penalizacion frontal y lado recomendado de vistas cuando se puede inferir.
+- `visualOrientationScore` y `orientationScore`: puntuaciones graduales de calidad visual/orientacion. `orientationScore` combina exposicion solar y lado visual recomendado, y entra en el `totalScore` con peso limitado para no dominar meteorologia, tiempo, interes visual ni coste.
+- `predominantSunPosition`, `recommendedViewingSide`, `frontalSunLegs` y `orientationFavorableReason`: resumen explicable de la orientacion de la ruta.
 - Combustible: tiempo en horas * consumo por hora.
 - Coste: combustible estimado * precio por litro.
 - `usefulAvailableTimeMinutes`: tiempo disponible menos reserva recomendada del avion y margen de seguridad.
@@ -276,7 +301,7 @@ Campos destacados:
 - Meteorologia por ruta recomendada: ademas del valor meteorologico representativo usado por el scoring, se calcula `routeWeatherSummary` consultando hasta 3 puntos: aeropuerto de salida, primer waypoint como waypoint principal y ultimo waypoint antes de volver. Si hay waypoints repetidos o menos puntos disponibles, se reducen las consultas.
 - `routeWeatherSummary`: agrega viento medio y maximo, nubosidad media, probabilidad maxima de precipitacion, visibilidad minima, temperatura media, `weatherScore`, `provider` e `isMock`.
 - `weatherScore`: se calcula desde el resumen de ruta multi-punto. Penaliza viento alto, precipitacion alta, nubosidad muy alta y visibilidad baja, y siempre se limita a 0-100.
-- Scoring: combina `weatherScore`, `timeFitScore`, `preferenceScore`, interes visual y coste. Las rutas `inter-island` reciben una penalizacion por defecto salvo preferencia explicita.
+- Scoring: combina `weatherScore`, `timeFitScore`, `preferenceScore`, interes visual, calidad visual/orientacion y coste. Las rutas `inter-island` reciben una penalizacion por defecto salvo preferencia explicita.
 - `timeFitScore`: puntua mejor las rutas cercanas a `targetDurationMinutes`, permite rutas hasta el 125% del tiempo util y descarta el encaje temporal por encima de ese margen.
 - Penalizacion de rutas demasiado cortas: si `preference` no es `short`, las rutas por debajo del 40% del tiempo util penalizan mucho y las de 40%-60% penalizan moderadamente. Si `preference` es `short`, esas rutas no se penalizan por duracion.
 - `routeDurationCategory`: clasifica cada recomendacion como `TOO_SHORT`, `SHORT`, `GOOD_FIT`, `LONG`, `SLIGHTLY_OVER_TIME` o `TOO_LONG` segun la proporcion entre `estimatedTimeMinutes` y `usefulAvailableTimeMinutes`.

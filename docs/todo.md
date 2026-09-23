@@ -8,6 +8,7 @@
 - Parametrizar pesos de scoring y cuotas de bandas cuando haya mas datos.
 - Mejorar logging para diferenciar descartes por tiempo, similitud, limite de candidatas, seleccion final, fallback weather y cache weather.
 - Modelar variantes de ruta locales mas ricas: vuelta parcial/completa a isla, tramos panoramicos lentos y limites configurables de observacion escenica.
+- Afinar `preferredViewingBearingDegrees` de `VisualWaypoint` con datos costeros/orograficos reales para mejorar la recomendacion de lado de vistas.
 - Ajustar umbrales de similitud con datos reales y feedback de uso.
 
 ## Datos y Fuentes
@@ -25,7 +26,7 @@
 
 ## Frontend
 
-- Mostrar mejor el desglose de scoring.
+- Mostrar mejor el desglose de scoring y orientacion cuando haya mas componentes.
 - Explicar visualmente si una ruta aprovecha poco, bien o demasiado el tiempo disponible.
 - Mostrar warnings de rutas `extended` de forma mas visible.
 - Anadir vista de debug para candidatas y descartes.

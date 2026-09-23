@@ -91,6 +91,7 @@ public class RouteCandidateGenerator {
         candidates.addAll(twoWaypointRoutes(departureAirport, prioritizedWaypoints));
         candidates.addAll(threeOrMoreWaypointRoutes(departureAirport, prioritizedWaypoints, availableTimeMinutes));
         candidates.addAll(extendedWaypointRoutes(departureAirport, prioritizedWaypoints, availableTimeMinutes, cruiseSpeedKmh, preference));
+        candidates.addAll(reversedRouteVariants(candidates));
         candidates = uniqueRoutes(candidates);
 
         List<RouteCandidateDiscard> discardedCandidates = new ArrayList<>();
@@ -469,6 +470,31 @@ public class RouteCandidateGenerator {
                         .reduce((first, second) -> first + "|" + second)
                         .orElse(route.id())))
                 .toList();
+    }
+
+    private List<FlightRoute> reversedRouteVariants(List<FlightRoute> routes) {
+        return routes.stream()
+                .filter(route -> route.waypoints().size() > 1)
+                .map(this::reversedRouteVariant)
+                .toList();
+    }
+
+    private FlightRoute reversedRouteVariant(FlightRoute route) {
+        List<Waypoint> reversedWaypoints = new ArrayList<>(route.waypoints());
+        java.util.Collections.reverse(reversedWaypoints);
+
+        return new FlightRoute(
+                route.id() + "-reverse",
+                route.name() + " inversa",
+                route.description() + " Variante generada en sentido inverso para comparar orientacion solar y visual.",
+                route.routeType(),
+                route.departureAirport(),
+                reversedWaypoints,
+                route.tags(),
+                route.estimatedDistanceKm(),
+                route.estimatedDurationMinutes(),
+                route.scenicScore()
+        );
     }
 
     private String waypointSignature(List<VisualWaypoint> waypoints) {

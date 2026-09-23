@@ -168,10 +168,10 @@ class RouteCandidateGeneratorTest {
         var result = generator.generateWithDebug(MockFlightData.GCLP, 180, 226.0, "coast");
         int compatibleWaypointCount = result.compatibleWaypointCount();
         int maximumGeneratedCandidates = compatibleWaypointCount
-                + compatibleWaypointCount * (compatibleWaypointCount - 1) / 2
+                + 2 * (compatibleWaypointCount * (compatibleWaypointCount - 1) / 2
                 + 220
                 + 260
-                + 140;
+                + 140);
 
         assertTrue(result.generatedCandidateRoutes() <= maximumGeneratedCandidates);
     }
