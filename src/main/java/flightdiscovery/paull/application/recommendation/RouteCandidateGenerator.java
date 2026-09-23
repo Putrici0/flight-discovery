@@ -2,7 +2,9 @@ package flightdiscovery.paull.application.recommendation;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,28 +24,42 @@ public class RouteCandidateGenerator {
     private static final Logger LOGGER = LoggerFactory.getLogger(RouteCandidateGenerator.class);
     private static final double MAX_ALLOWED_TIME_OVERRUN_RATIO = 1.25;
     private static final double TARGET_DURATION_RATIO = 0.85;
-    private static final int MAX_GENERATED_ROUTES = 30;
     private static final int MIN_TIME_FOR_THREE_OR_MORE_WAYPOINT_ROUTES = 90;
-    private static final int MAX_THREE_OR_MORE_WAYPOINT_CANDIDATES = 40;
+    private static final int MAX_THREE_OR_MORE_WAYPOINT_CANDIDATES = 220;
     private static final int MIN_TIME_FOR_EXTENDED_WAYPOINT_ROUTES = 180;
-    private static final int MAX_EXTENDED_WAYPOINT_CANDIDATES = 80;
-    private static final int MAX_CORRIDOR_ENRICHED_ROUTES = 60;
-    private static final int MAX_CORRIDOR_WAYPOINTS = 4;
-    private static final double MAX_CORRIDOR_DISTANCE_INCREASE_RATIO = 0.18;
-    private static final double CORRIDOR_DETOUR_LIMIT_KM = 14.0;
-    private static final double PREFERRED_ROUTE_RATIO = 0.80;
+    private static final int MAX_EXTENDED_WAYPOINT_CANDIDATES = 260;
+    private static final int MAX_CORRIDOR_ENRICHED_ROUTES = 140;
+    private static final int MAX_CORRIDOR_WAYPOINTS = 5;
+    private static final double MAX_CORRIDOR_DISTANCE_INCREASE_RATIO = 0.28;
+    private static final double CORRIDOR_DETOUR_LIMIT_KM = 18.0;
+    private static final double MIN_WAYPOINT_SEPARATION_KM = 3.0;
+    private static final double MAX_LOW_VALUE_DETOUR_KM = 18.0;
+    private static final List<String> LANDSCAPE_TAGS = List.of(
+            "coast",
+            "mountain",
+            "ravine",
+            "village",
+            "historic",
+            "beach",
+            "forest",
+            "volcanic",
+            "panoramic"
+    );
     private static final String TIME_DISCARD_REASON = "Estimated route time exceeds useful available time plus 25% tolerance";
     private static final String CANDIDATE_LIMIT_DISCARD_REASON = "Not selected after dynamic candidate preference and diversity limit";
 
     private final MockWaypointRepository waypointRepository;
     private final RouteCalculationService routeCalculationService;
+    private final RouteCandidateSelectionService routeCandidateSelectionService;
 
     public RouteCandidateGenerator(
             MockWaypointRepository waypointRepository,
-            RouteCalculationService routeCalculationService
+            RouteCalculationService routeCalculationService,
+            RouteCandidateSelectionService routeCandidateSelectionService
     ) {
         this.waypointRepository = waypointRepository;
         this.routeCalculationService = routeCalculationService;
+        this.routeCandidateSelectionService = routeCandidateSelectionService;
     }
 
     public List<FlightRoute> generate(
@@ -61,11 +77,11 @@ public class RouteCandidateGenerator {
             double cruiseSpeedKmh,
             String preference
     ) {
-        List<VisualWaypoint> prioritizedWaypoints = waypointRepository.findAll().stream()
+        List<VisualWaypoint> prioritizedWaypoints = removeNearDuplicateWaypoints(waypointRepository.findAll().stream()
                 .filter(waypoint -> isCompatibleWithDepartureAirport(waypoint, departureAirport))
                 .filter(waypoint -> isInterIslandPreference(preference) || !isInterIslandWaypoint(waypoint))
                 .sorted(waypointComparator(preference))
-                .toList();
+                .toList());
         LOGGER.info("Recommendation diagnostics: visualWaypoints={} departureAirport={} usefulFlightTimeMinutes={}",
                 prioritizedWaypoints.size(), departureAirport.code(), round(availableTimeMinutes));
 
@@ -75,15 +91,16 @@ public class RouteCandidateGenerator {
         candidates.addAll(twoWaypointRoutes(departureAirport, prioritizedWaypoints));
         candidates.addAll(threeOrMoreWaypointRoutes(departureAirport, prioritizedWaypoints, availableTimeMinutes));
         candidates.addAll(extendedWaypointRoutes(departureAirport, prioritizedWaypoints, availableTimeMinutes, cruiseSpeedKmh, preference));
+        candidates = uniqueRoutes(candidates);
 
         List<RouteCandidateDiscard> discardedCandidates = new ArrayList<>();
-        List<TimedRouteCandidate> timeViableCandidates = new ArrayList<>();
+        List<GeneratedRouteCandidate> timeViableCandidates = new ArrayList<>();
         for (FlightRoute candidate : candidates) {
             double estimatedTimeMinutes = estimatedTimeMinutes(candidate, cruiseSpeedKmh);
             double limitMinutes = availableTimeMinutes * MAX_ALLOWED_TIME_OVERRUN_RATIO;
 
             if (estimatedTimeMinutes <= limitMinutes) {
-                timeViableCandidates.add(new TimedRouteCandidate(candidate, estimatedTimeMinutes, bandFor(estimatedTimeMinutes, availableTimeMinutes)));
+                timeViableCandidates.add(routeCandidateSelectionService.candidate(candidate, estimatedTimeMinutes, availableTimeMinutes));
             } else {
                 discardedCandidates.add(new RouteCandidateDiscard(
                         candidate,
@@ -96,15 +113,17 @@ public class RouteCandidateGenerator {
         LOGGER.info("Recommendation diagnostics: generatedCandidates={} discardedGeneratedCandidatesByTime={} timeViableGeneratedCandidates={}",
                 candidates.size(), candidates.size() - timeViableCandidates.size(), timeViableCandidates.size());
 
-        List<TimedRouteCandidate> limitedCandidates = limitCandidates(timeViableCandidates, preference, availableTimeMinutes);
+        List<GeneratedRouteCandidate> limitedCandidates = routeCandidateSelectionService.limitCandidates(timeViableCandidates, preference, availableTimeMinutes);
         List<FlightRoute> limitedRoutes = limitedCandidates.stream()
-                .map(TimedRouteCandidate::route)
+                .map(GeneratedRouteCandidate::route)
                 .toList();
-        SetUtils.notSelected(timeViableCandidates, limitedCandidates).stream()
-                .map(route -> new RouteCandidateDiscard(
-                        route.route(),
-                        CANDIDATE_LIMIT_DISCARD_REASON,
-                        round(route.estimatedTimeMinutes()),
+        routeCandidateSelectionService.notSelected(timeViableCandidates, limitedCandidates).stream()
+                .map(candidate -> new RouteCandidateDiscard(
+                        candidate.route(),
+                        routeCandidateSelectionService.isTooSimilarToSelected(candidate, limitedCandidates)
+                                ? "Too similar to a selected generated candidate"
+                                : CANDIDATE_LIMIT_DISCARD_REASON,
+                        round(candidate.estimatedTimeMinutes()),
                         round(availableTimeMinutes * MAX_ALLOWED_TIME_OVERRUN_RATIO)
                 ))
                 .forEach(discardedCandidates::add);
@@ -140,7 +159,8 @@ public class RouteCandidateGenerator {
             }
 
             FlightRoute route = multiWaypointRoute(departureAirport, enrichedWaypoints, "generated-corridor-");
-            if (estimatedTimeMinutes(route, cruiseSpeedKmh) <= availableTimeMinutes * MAX_ALLOWED_TIME_OVERRUN_RATIO) {
+            if (coherentRoute(departureAirport, enrichedWaypoints)
+                    && estimatedTimeMinutes(route, cruiseSpeedKmh) <= availableTimeMinutes * MAX_ALLOWED_TIME_OVERRUN_RATIO) {
                 routes.add(route);
             }
 
@@ -213,7 +233,10 @@ public class RouteCandidateGenerator {
 
         for (int i = 0; i < waypoints.size(); i++) {
             for (int j = i + 1; j < waypoints.size(); j++) {
-                routes.add(twoWaypointRoute(departureAirport, waypoints.get(i), waypoints.get(j)));
+                List<VisualWaypoint> orderedWaypoints = routeOrder(departureAirport, List.of(waypoints.get(i), waypoints.get(j)));
+                if (coherentRoute(departureAirport, orderedWaypoints)) {
+                    routes.add(twoWaypointRoute(departureAirport, orderedWaypoints.get(0), orderedWaypoints.get(1)));
+                }
             }
         }
 
@@ -231,15 +254,13 @@ public class RouteCandidateGenerator {
 
         List<FlightRoute> routes = new ArrayList<>();
 
-        for (int i = 0; i < waypoints.size(); i++) {
-            for (int j = i + 1; j < waypoints.size(); j++) {
-                for (int k = j + 1; k < waypoints.size(); k++) {
-                    routes.add(threeWaypointRoute(departureAirport, List.of(waypoints.get(i), waypoints.get(j), waypoints.get(k))));
+        for (List<VisualWaypoint> waypointSet : geographicWaypointSets(departureAirport, waypoints, 3, 3, MAX_THREE_OR_MORE_WAYPOINT_CANDIDATES)) {
+            if (coherentRoute(departureAirport, waypointSet)) {
+                routes.add(threeWaypointRoute(departureAirport, waypointSet));
+            }
 
-                    if (routes.size() >= MAX_THREE_OR_MORE_WAYPOINT_CANDIDATES) {
-                        return routes;
-                    }
-                }
+            if (routes.size() >= MAX_THREE_OR_MORE_WAYPOINT_CANDIDATES) {
+                return routes;
             }
         }
 
@@ -259,19 +280,11 @@ public class RouteCandidateGenerator {
 
         List<TimedRouteCandidate> routes = new ArrayList<>();
 
-        for (int i = 0; i < waypoints.size(); i++) {
-            for (int j = i + 1; j < waypoints.size(); j++) {
-                for (int k = j + 1; k < waypoints.size(); k++) {
-                    for (int l = k + 1; l < waypoints.size(); l++) {
-                        List<VisualWaypoint> orderedWaypoints = routeOrder(
-                                departureAirport,
-                                List.of(waypoints.get(i), waypoints.get(j), waypoints.get(k), waypoints.get(l))
-                        );
-                        FlightRoute route = multiWaypointRoute(departureAirport, orderedWaypoints);
-                        double estimatedTimeMinutes = estimatedTimeMinutes(route, cruiseSpeedKmh);
-                        routes.add(new TimedRouteCandidate(route, estimatedTimeMinutes, bandFor(estimatedTimeMinutes, availableTimeMinutes)));
-                    }
-                }
+        for (List<VisualWaypoint> waypointSet : geographicWaypointSets(departureAirport, waypoints, 4, 5, MAX_EXTENDED_WAYPOINT_CANDIDATES * 3)) {
+            if (coherentRoute(departureAirport, waypointSet)) {
+                FlightRoute route = multiWaypointRoute(departureAirport, waypointSet);
+                double estimatedTimeMinutes = estimatedTimeMinutes(route, cruiseSpeedKmh);
+                routes.add(new TimedRouteCandidate(route, estimatedTimeMinutes, bandFor(estimatedTimeMinutes, availableTimeMinutes)));
             }
         }
 
@@ -284,187 +297,186 @@ public class RouteCandidateGenerator {
     }
 
     private List<VisualWaypoint> routeOrder(Airport departureAirport, List<VisualWaypoint> waypoints) {
-        List<VisualWaypoint> byDistanceDescending = waypoints.stream()
-                .sorted(Comparator.comparingDouble(
-                        (VisualWaypoint waypoint) -> distanceFromDepartureAirport(departureAirport, waypoint)
-                ).reversed())
-                .toList();
-        List<VisualWaypoint> byDistanceAscending = byDistanceDescending.reversed();
+        List<VisualWaypoint> remainingWaypoints = new ArrayList<>(waypoints);
         List<VisualWaypoint> orderedWaypoints = new ArrayList<>();
+        double currentLatitude = departureAirport.latitude();
+        double currentLongitude = departureAirport.longitude();
 
-        for (int i = 0; i < byDistanceDescending.size(); i++) {
-            VisualWaypoint waypoint = i % 2 == 0
-                    ? byDistanceDescending.get(i / 2)
-                    : byDistanceAscending.get(i / 2);
+        while (!remainingWaypoints.isEmpty()) {
+            double fromLatitude = currentLatitude;
+            double fromLongitude = currentLongitude;
+            VisualWaypoint nextWaypoint = remainingWaypoints.stream()
+                    .min(Comparator
+                            .comparingDouble((VisualWaypoint waypoint) -> routeCalculationService.haversineKm(
+                                    fromLatitude,
+                                    fromLongitude,
+                                    waypoint.latitude(),
+                                    waypoint.longitude()
+                            ))
+                            .thenComparing(VisualWaypoint::scenicValue, Comparator.reverseOrder()))
+                    .orElseThrow();
 
-            if (!orderedWaypoints.contains(waypoint)) {
-                orderedWaypoints.add(waypoint);
-            }
+            orderedWaypoints.add(nextWaypoint);
+            remainingWaypoints.remove(nextWaypoint);
+            currentLatitude = nextWaypoint.latitude();
+            currentLongitude = nextWaypoint.longitude();
         }
-
-        byDistanceDescending.stream()
-                .filter(waypoint -> !orderedWaypoints.contains(waypoint))
-                .forEach(orderedWaypoints::add);
 
         return orderedWaypoints;
     }
 
-    private List<TimedRouteCandidate> limitCandidates(
-            List<TimedRouteCandidate> candidates,
-            String preference,
-            double availableTimeMinutes
+    private List<List<VisualWaypoint>> geographicWaypointSets(
+            Airport departureAirport,
+            List<VisualWaypoint> waypoints,
+            int minWaypointCount,
+            int maxWaypointCount,
+            int limit
     ) {
-        if (preference == null || preference.isBlank()) {
-            return balancedCandidates(candidates, preference, availableTimeMinutes);
+        List<List<VisualWaypoint>> waypointSets = new ArrayList<>();
+        Set<String> signatures = new LinkedHashSet<>();
+
+        for (String tag : LANDSCAPE_TAGS) {
+            List<VisualWaypoint> taggedWaypoints = waypoints.stream()
+                    .filter(waypoint -> waypoint.tags().contains(tag))
+                    .sorted(Comparator
+                            .comparingDouble((VisualWaypoint waypoint) -> bearingFromDepartureAirport(departureAirport, waypoint))
+                            .thenComparing(VisualWaypoint::scenicValue, Comparator.reverseOrder()))
+                    .toList();
+            addSlidingWindowSets(departureAirport, taggedWaypoints, minWaypointCount, maxWaypointCount, limit, waypointSets, signatures);
         }
 
-        List<TimedRouteCandidate> preferredRoutes = candidates.stream()
-                .filter(candidate -> routeMatchesPreference(candidate.route(), preference))
+        List<VisualWaypoint> byBearing = waypoints.stream()
+                .sorted(Comparator.comparingDouble(waypoint -> bearingFromDepartureAirport(departureAirport, waypoint)))
                 .toList();
-        List<TimedRouteCandidate> alternativeRoutes = candidates.stream()
-                .filter(candidate -> !routeMatchesPreference(candidate.route(), preference))
+        addSlidingWindowSets(departureAirport, byBearing, minWaypointCount, maxWaypointCount, limit, waypointSets, signatures);
+
+        List<VisualWaypoint> byDistance = waypoints.stream()
+                .sorted(Comparator.comparingDouble(waypoint -> distanceFromDepartureAirport(departureAirport, waypoint)))
                 .toList();
-        int preferredTarget = (int) Math.round(MAX_GENERATED_ROUTES * PREFERRED_ROUTE_RATIO);
-        int alternativeTarget = MAX_GENERATED_ROUTES - preferredTarget;
+        addSlidingWindowSets(departureAirport, byDistance, minWaypointCount, maxWaypointCount, limit, waypointSets, signatures);
 
-        List<TimedRouteCandidate> selectedRoutes = new ArrayList<>();
-        addRoutes(selectedRoutes, balancedCandidates(preferredRoutes, preference, availableTimeMinutes), preferredTarget);
-        addRoutes(selectedRoutes, balancedCandidates(alternativeRoutes, preference, availableTimeMinutes), alternativeTarget);
-        addRoutes(selectedRoutes, balancedCandidates(preferredRoutes, preference, availableTimeMinutes), MAX_GENERATED_ROUTES - selectedRoutes.size());
-        addRoutes(selectedRoutes, balancedCandidates(alternativeRoutes, preference, availableTimeMinutes), MAX_GENERATED_ROUTES - selectedRoutes.size());
-
-        return ensureRouteTypeVariety(selectedRoutes, candidates, preference, availableTimeMinutes);
+        return waypointSets;
     }
 
-    private List<TimedRouteCandidate> balancedCandidates(
-            List<TimedRouteCandidate> candidates,
-            String preference,
-            double availableTimeMinutes
-    ) {
-        List<TimedRouteCandidate> selectedRoutes = new ArrayList<>();
-        int longTarget = Math.max(1, (int) Math.round(MAX_GENERATED_ROUTES * 0.40));
-        int mediumTarget = Math.max(1, (int) Math.round(MAX_GENERATED_ROUTES * 0.25));
-        int extendedTarget = Math.max(1, (int) Math.round(MAX_GENERATED_ROUTES * 0.20));
-        int shortTarget = MAX_GENERATED_ROUTES - longTarget - mediumTarget - extendedTarget;
-
-        addBandRoutes(selectedRoutes, candidates, DurationBand.LONG, longTarget, preference, availableTimeMinutes);
-        addBandRoutes(selectedRoutes, candidates, DurationBand.MEDIUM, mediumTarget, preference, availableTimeMinutes);
-        addBandRoutes(selectedRoutes, candidates, DurationBand.EXTENDED, extendedTarget, preference, availableTimeMinutes);
-        addBandRoutes(selectedRoutes, candidates, DurationBand.SHORT, shortTarget, preference, availableTimeMinutes);
-        addRoutes(
-                selectedRoutes,
-                sortedCandidates(candidates, preference, availableTimeMinutes),
-                MAX_GENERATED_ROUTES - selectedRoutes.size()
-        );
-
-        return ensureRouteTypeVariety(selectedRoutes, candidates, preference, availableTimeMinutes);
-    }
-
-    private List<TimedRouteCandidate> ensureRouteTypeVariety(
-            List<TimedRouteCandidate> selectedRoutes,
-            List<TimedRouteCandidate> candidates,
-            String preference,
-            double availableTimeMinutes
-    ) {
-        List<TimedRouteCandidate> variedRoutes = new ArrayList<>(selectedRoutes);
-        ensureBand(variedRoutes, candidates, DurationBand.LONG, preference, availableTimeMinutes);
-        ensureBand(variedRoutes, candidates, DurationBand.MEDIUM, preference, availableTimeMinutes);
-        ensureBand(variedRoutes, candidates, DurationBand.EXTENDED, preference, availableTimeMinutes);
-        ensureBand(variedRoutes, candidates, DurationBand.SHORT, preference, availableTimeMinutes);
-        ensureRouteType(variedRoutes, candidates, RouteType.GENERATED_ONE_WAYPOINT, preference, availableTimeMinutes);
-        ensureRouteType(variedRoutes, candidates, RouteType.GENERATED_TWO_WAYPOINTS, preference, availableTimeMinutes);
-        ensureRouteType(variedRoutes, candidates, RouteType.GENERATED_THREE_OR_MORE_WAYPOINTS, preference, availableTimeMinutes);
-
-        return variedRoutes;
-    }
-
-    private void ensureBand(
-            List<TimedRouteCandidate> selectedRoutes,
-            List<TimedRouteCandidate> candidates,
-            DurationBand band,
-            String preference,
-            double availableTimeMinutes
-    ) {
-        boolean alreadySelected = selectedRoutes.stream()
-                .anyMatch(candidate -> candidate.band() == band);
-        if (alreadySelected) {
-            return;
-        }
-
-        TimedRouteCandidate replacement = sortedCandidates(candidates, preference, availableTimeMinutes).stream()
-                .filter(candidate -> candidate.band() == band)
-                .findFirst()
-                .orElse(null);
-        if (replacement == null) {
-            return;
-        }
-
-        addOrReplaceLast(selectedRoutes, replacement);
-    }
-
-    private void ensureRouteType(
-            List<TimedRouteCandidate> selectedRoutes,
-            List<TimedRouteCandidate> candidates,
-            RouteType routeType,
-            String preference,
-            double availableTimeMinutes
-    ) {
-        boolean alreadySelected = selectedRoutes.stream()
-                .anyMatch(candidate -> candidate.route().routeType() == routeType);
-        if (alreadySelected) {
-            return;
-        }
-
-        TimedRouteCandidate replacement = sortedCandidates(candidates, preference, availableTimeMinutes).stream()
-                .filter(candidate -> candidate.route().routeType() == routeType)
-                .findFirst()
-                .orElse(null);
-        if (replacement == null) {
-            return;
-        }
-
-        addOrReplaceLast(selectedRoutes, replacement);
-    }
-
-    private void addOrReplaceLast(List<TimedRouteCandidate> selectedRoutes, TimedRouteCandidate replacement) {
-        if (selectedRoutes.stream().anyMatch(selected -> selected.route().id().equals(replacement.route().id()))) {
-            return;
-        }
-
-        if (selectedRoutes.size() < MAX_GENERATED_ROUTES) {
-            selectedRoutes.add(replacement);
-            return;
-        }
-        selectedRoutes.removeLast();
-        selectedRoutes.add(replacement);
-    }
-
-    private void addBandRoutes(
-            List<TimedRouteCandidate> selectedRoutes,
-            List<TimedRouteCandidate> candidates,
-            DurationBand band,
+    private void addSlidingWindowSets(
+            Airport departureAirport,
+            List<VisualWaypoint> waypoints,
+            int minWaypointCount,
+            int maxWaypointCount,
             int limit,
-            String preference,
-            double availableTimeMinutes
+            List<List<VisualWaypoint>> waypointSets,
+            Set<String> signatures
     ) {
-        addRoutes(
-                selectedRoutes,
-                sortedCandidates(candidates, preference, availableTimeMinutes).stream()
-                        .filter(candidate -> candidate.band() == band)
-                        .toList(),
-                limit
-        );
-    }
-
-    private void addRoutes(List<TimedRouteCandidate> selectedRoutes, List<TimedRouteCandidate> candidates, int limit) {
-        if (limit <= 0) {
+        if (waypoints.size() < minWaypointCount) {
             return;
         }
 
-        candidates.stream()
-                .filter(candidate -> selectedRoutes.stream().noneMatch(selected -> selected.route().id().equals(candidate.route().id())))
-                .limit(limit)
-                .forEach(selectedRoutes::add);
+        for (int waypointCount = minWaypointCount; waypointCount <= maxWaypointCount; waypointCount++) {
+            if (waypoints.size() < waypointCount) {
+                continue;
+            }
+
+            for (int start = 0; start <= waypoints.size() - waypointCount; start++) {
+                List<VisualWaypoint> orderedWaypoints = routeOrder(
+                        departureAirport,
+                        waypoints.subList(start, start + waypointCount)
+                );
+                String signature = waypointSignature(orderedWaypoints);
+                if (signatures.add(signature) && coherentRoute(departureAirport, orderedWaypoints)) {
+                    waypointSets.add(orderedWaypoints);
+                }
+
+                if (waypointSets.size() >= limit) {
+                    return;
+                }
+            }
+        }
+    }
+
+    private List<VisualWaypoint> removeNearDuplicateWaypoints(List<VisualWaypoint> waypoints) {
+        List<VisualWaypoint> selectedWaypoints = new ArrayList<>();
+
+        for (VisualWaypoint waypoint : waypoints) {
+            boolean nearDuplicate = selectedWaypoints.stream()
+                    .anyMatch(selectedWaypoint -> routeCalculationService.haversineKm(
+                            waypoint.latitude(),
+                            waypoint.longitude(),
+                            selectedWaypoint.latitude(),
+                            selectedWaypoint.longitude()
+                    ) < MIN_WAYPOINT_SEPARATION_KM
+                            && sharesLandscapeTag(waypoint, selectedWaypoint));
+            if (!nearDuplicate) {
+                selectedWaypoints.add(waypoint);
+            }
+        }
+
+        return selectedWaypoints;
+    }
+
+    private boolean coherentRoute(Airport departureAirport, List<VisualWaypoint> waypoints) {
+        if (waypoints.size() <= 1) {
+            return true;
+        }
+
+        if (hasNearDuplicateWaypoints(waypoints)) {
+            return false;
+        }
+
+        double routeDistanceKm = roundTripDistanceKm(departureAirport, waypoints);
+        double farthestRoundTripKm = waypoints.stream()
+                .mapToDouble(waypoint -> distanceFromDepartureAirport(departureAirport, waypoint))
+                .max()
+                .orElse(0.0) * 2.0;
+        double scenicScore = waypoints.stream()
+                .mapToDouble(VisualWaypoint::scenicValue)
+                .average()
+                .orElse(0.0);
+        double allowedDistanceKm = farthestRoundTripKm * 1.45
+                + (scenicScore >= 85.0 ? 28.0 : MAX_LOW_VALUE_DETOUR_KM);
+
+        return routeDistanceKm <= allowedDistanceKm;
+    }
+
+    private boolean hasNearDuplicateWaypoints(List<VisualWaypoint> waypoints) {
+        for (int i = 0; i < waypoints.size(); i++) {
+            for (int j = i + 1; j < waypoints.size(); j++) {
+                if (routeCalculationService.haversineKm(
+                        waypoints.get(i).latitude(),
+                        waypoints.get(i).longitude(),
+                        waypoints.get(j).latitude(),
+                        waypoints.get(j).longitude()
+                ) < MIN_WAYPOINT_SEPARATION_KM) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private boolean sharesLandscapeTag(VisualWaypoint firstWaypoint, VisualWaypoint secondWaypoint) {
+        return firstWaypoint.tags().stream()
+                .filter(LANDSCAPE_TAGS::contains)
+                .anyMatch(secondWaypoint.tags()::contains);
+    }
+
+    private List<FlightRoute> uniqueRoutes(List<FlightRoute> routes) {
+        Set<String> signatures = new LinkedHashSet<>();
+
+        return routes.stream()
+                .filter(route -> signatures.add(route.waypoints().stream()
+                        .map(waypoint -> waypoint.name().toLowerCase())
+                        .reduce((first, second) -> first + "|" + second)
+                        .orElse(route.id())))
+                .toList();
+    }
+
+    private String waypointSignature(List<VisualWaypoint> waypoints) {
+        return waypoints.stream()
+                .map(VisualWaypoint::id)
+                .sorted()
+                .reduce((first, second) -> first + "|" + second)
+                .orElse("empty");
     }
 
     private FlightRoute singleWaypointRoute(Airport departureAirport, VisualWaypoint waypoint) {
@@ -586,6 +598,17 @@ public class RouteCandidateGenerator {
                 waypoint.latitude(),
                 waypoint.longitude()
         );
+    }
+
+    private double bearingFromDepartureAirport(Airport departureAirport, VisualWaypoint waypoint) {
+        double fromLatitude = Math.toRadians(departureAirport.latitude());
+        double toLatitude = Math.toRadians(waypoint.latitude());
+        double longitudeDelta = Math.toRadians(waypoint.longitude() - departureAirport.longitude());
+        double y = Math.sin(longitudeDelta) * Math.cos(toLatitude);
+        double x = Math.cos(fromLatitude) * Math.sin(toLatitude)
+                - Math.sin(fromLatitude) * Math.cos(toLatitude) * Math.cos(longitudeDelta);
+
+        return (Math.toDegrees(Math.atan2(y, x)) + 360.0) % 360.0;
     }
 
     private DurationBand bandFor(double estimatedTimeMinutes, double availableTimeMinutes) {
@@ -765,18 +788,4 @@ public class RouteCandidateGenerator {
         }
     }
 
-    private static final class SetUtils {
-
-        private SetUtils() {
-        }
-
-        private static List<TimedRouteCandidate> notSelected(
-                List<TimedRouteCandidate> candidates,
-                List<TimedRouteCandidate> selectedRoutes
-        ) {
-            return candidates.stream()
-                    .filter(candidate -> selectedRoutes.stream().noneMatch(selected -> selected.route().id().equals(candidate.route().id())))
-                    .toList();
-        }
-    }
 }

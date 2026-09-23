@@ -2,13 +2,7 @@ package flightdiscovery.paull.application.recommendation;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.stream.Stream;
 
 import org.slf4j.Logger;
@@ -17,14 +11,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
-import flightdiscovery.paull.api.recommendation.RecommendationRequest;
-import flightdiscovery.paull.api.recommendation.RecommendationResponse;
 import flightdiscovery.paull.api.recommendation.RecommendationCandidateDebug;
 import flightdiscovery.paull.api.recommendation.RecommendationDebugInfo;
 import flightdiscovery.paull.api.recommendation.RecommendationDevelopmentDebugResponse;
+import flightdiscovery.paull.api.recommendation.RecommendationRequest;
+import flightdiscovery.paull.api.recommendation.RecommendationResponse;
 import flightdiscovery.paull.api.recommendation.RecommendationRouteDiscardDebug;
 import flightdiscovery.paull.api.recommendation.RecommendedRouteResponse;
-import flightdiscovery.paull.api.recommendation.RouteDurationCategory;
 import flightdiscovery.paull.api.recommendation.SightseeingManeuverResponse;
 import flightdiscovery.paull.domain.calculation.RouteCalculationService;
 import flightdiscovery.paull.domain.model.Aircraft;
@@ -44,7 +37,6 @@ import flightdiscovery.paull.domain.repository.MockRouteRepository;
 import flightdiscovery.paull.domain.scoring.RouteScoringService;
 import flightdiscovery.paull.domain.weather.MockWeatherService;
 import flightdiscovery.paull.domain.weather.OpenMeteoWeatherService;
-import flightdiscovery.paull.domain.weather.WeatherServiceException;
 import flightdiscovery.paull.domain.weather.WeatherService;
 
 @Service
@@ -52,21 +44,9 @@ public class RecommendationService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(RecommendationService.class);
     private static final int MIN_RECOMMENDATIONS = 3;
-    private static final int MAX_RECOMMENDATIONS = 5;
-    private static final double MAX_ALLOWED_TIME_OVERRUN_RATIO = 1.25;
     private static final double LOW_TIME_MARGIN_RATIO = 0.90;
     private static final double HIGH_COST_THRESHOLD_EUR = 150.0;
-    private static final double HIGH_SHORT_ROUTE_SCORE = 85.0;
-    private static final int MAX_RECOMMENDED_ROUTES_PER_WAYPOINT = 2;
-    private static final double LOCAL_ROUTE_SIGHTSEEING_MIN_SCENIC_SCORE = 85.0;
     private static final double SIGHTSEEING_TARGET_USEFUL_TIME_RATIO = 0.85;
-    private static final double SIGHTSEEING_AVAILABLE_MARGIN_RATIO = 0.65;
-    private static final double MAX_SIGHTSEEING_ROUTE_RATIO = 0.85;
-    private static final double MAX_SIGHTSEEING_MINUTES_PER_WAYPOINT = 12.0;
-    private static final double MAX_TOTAL_SIGHTSEEING_MINUTES = 30.0;
-    private static final double SIGHTSEEING_ORBIT_MIN_RADIUS_KM = 0.8;
-    private static final double SIGHTSEEING_ORBIT_MAX_RADIUS_KM = 3.0;
-    private static final int SIGHTSEEING_ORBIT_SEGMENTS = 16;
     private static final String TIME_DISCARD_REASON = "Estimated route time exceeds useful available time plus 25% tolerance";
     private static final String FINAL_SELECTION_DISCARD_REASON = "Not selected after score and diversity recommendation limit";
 
@@ -77,6 +57,11 @@ public class RecommendationService {
     private final RouteCalculationService routeCalculationService;
     private final RouteScoringService routeScoringService;
     private final RouteCandidateGenerator routeCandidateGenerator;
+    private final RecommendationTimeService recommendationTimeService;
+    private final RecommendationSelectionService recommendationSelectionService;
+    private final SightseeingService sightseeingService;
+    private final SunExposureService sunExposureService;
+    private final RouteWeatherSummaryService routeWeatherSummaryService;
     private final WeatherService weatherService;
 
     public RecommendationService(
@@ -87,6 +72,11 @@ public class RecommendationService {
             RouteCalculationService routeCalculationService,
             RouteScoringService routeScoringService,
             RouteCandidateGenerator routeCandidateGenerator,
+            RecommendationTimeService recommendationTimeService,
+            RecommendationSelectionService recommendationSelectionService,
+            SightseeingService sightseeingService,
+            SunExposureService sunExposureService,
+            RouteWeatherSummaryService routeWeatherSummaryService,
             WeatherService weatherService
     ) {
         this.routeRepository = routeRepository;
@@ -96,20 +86,115 @@ public class RecommendationService {
         this.routeCalculationService = routeCalculationService;
         this.routeScoringService = routeScoringService;
         this.routeCandidateGenerator = routeCandidateGenerator;
+        this.recommendationTimeService = recommendationTimeService;
+        this.recommendationSelectionService = recommendationSelectionService;
+        this.sightseeingService = sightseeingService;
+        this.sunExposureService = sunExposureService;
+        this.routeWeatherSummaryService = routeWeatherSummaryService;
         this.weatherService = weatherService;
     }
 
     public RecommendationResponse recommend(RecommendationRequest request) {
+        RecommendationRun run = runRecommendation(request);
+        int scoredRoutesDiscardedByTime = run.scoredRoutes().size() - run.usefulTimeViableRoutes().size();
+        RecommendationDebugInfo debugInfo = new RecommendationDebugInfo(
+                run.generationResult().generatedCandidateRoutes(),
+                run.generationResult().discardedByTimeRoutes() + scoredRoutesDiscardedByTime,
+                run.viableRecommendations().size()
+        );
+
+        return new RecommendationResponse(run.viableRecommendations(), warnings(run.viableRecommendations()), debugInfo);
+    }
+
+    public RecommendationDevelopmentDebugResponse debug(RecommendationRequest request) {
+        RecommendationRun run = runRecommendation(request);
+        List<RecommendationRouteDiscardDebug> discards = new ArrayList<>();
+        discards.addAll(run.generationResult().discardedRoutes().stream()
+                .map(discard -> toDiscardDebug(discard, "GENERATED_TIME_FILTER"))
+                .toList());
+        discards.addAll(run.scoredRoutes().stream()
+                .filter(scoredRoute -> !recommendationTimeService.isWithinAllowedTime(scoredRoute.recommendation(), run.usefulAvailableTimeMinutes()))
+                .map(scoredRoute -> new RecommendationRouteDiscardDebug(
+                        scoredRoute.route().id(),
+                        scoredRoute.route().name(),
+                        "SCORING_TIME_FILTER",
+                        TIME_DISCARD_REASON,
+                        scoredRoute.recommendation().estimatedTimeMinutes(),
+                        round(recommendationTimeService.allowedTimeLimitMinutes(run.usefulAvailableTimeMinutes()))
+                ))
+                .toList());
+        discards.addAll(run.usefulTimeViableRoutes().stream()
+                .filter(scoredRoute -> run.viableRecommendations().stream()
+                        .noneMatch(recommendation -> recommendation.id().equals(scoredRoute.recommendation().id())))
+                .filter(scoredRoute -> run.similarRoutes().stream()
+                        .noneMatch(similarRoute -> similarRoute.route().id().equals(scoredRoute.route().id())))
+                .map(scoredRoute -> new RecommendationRouteDiscardDebug(
+                        scoredRoute.route().id(),
+                        scoredRoute.route().name(),
+                        "FINAL_SELECTION",
+                        FINAL_SELECTION_DISCARD_REASON,
+                        scoredRoute.recommendation().estimatedTimeMinutes(),
+                        round(recommendationTimeService.allowedTimeLimitMinutes(run.usefulAvailableTimeMinutes()))
+                ))
+                .toList());
+        discards.addAll(run.similarRoutes().stream()
+                .map(scoredRoute -> new RecommendationRouteDiscardDebug(
+                        scoredRoute.route().id(),
+                        scoredRoute.route().name(),
+                        "FINAL_SIMILARITY_FILTER",
+                        "Too similar to an already selected recommendation",
+                        scoredRoute.recommendation().estimatedTimeMinutes(),
+                        round(recommendationTimeService.allowedTimeLimitMinutes(run.usefulAvailableTimeMinutes()))
+                ))
+                .toList());
+        List<RecommendationCandidateDebug> candidates = candidateDebugRows(
+                run.scoredRoutes(),
+                run.generationResult().discardedRoutes(),
+                discards,
+                run.viableRecommendations()
+        );
+
+        return new RecommendationDevelopmentDebugResponse(
+                request,
+                run.aircraft(),
+                request.effectivePlannedDepartureDateTime(),
+                weatherProvider(run.viableRecommendations()),
+                run.viableScoredRoutes().stream()
+                        .flatMap(scoredRoute -> routeWeatherSummaryService.routeWeatherPoints(scoredRoute.route(), run.departureAirport()).stream())
+                        .distinct()
+                        .toList(),
+                run.fuelPrice().fuelType(),
+                run.fuelPrice().pricePerLiter(),
+                run.fuelPrice().source().name(),
+                run.fuelPrice().isMock(),
+                run.fuelPrice().airportCode(),
+                round(run.usefulAvailableTimeMinutes() * SIGHTSEEING_TARGET_USEFUL_TIME_RATIO),
+                round(run.usefulAvailableTimeMinutes()),
+                run.generationResult().compatibleWaypointCount(),
+                run.generationResult().generatedCandidateRoutes(),
+                discards.size(),
+                run.viableRecommendations().size(),
+                candidates,
+                discards,
+                run.viableRecommendations()
+        );
+    }
+
+    private RecommendationRun runRecommendation(RecommendationRequest request) {
         Aircraft aircraft = resolveAircraft(request);
         double cruiseSpeedKmh = resolveCruiseSpeed(request, aircraft);
         double fuelBurnLitersPerHour = resolveFuelBurn(request, aircraft);
-        double usefulAvailableTimeMinutes = usefulAvailableTimeMinutes(request, aircraft);
-
+        double usefulAvailableTimeMinutes = recommendationTimeService.usefulAvailableTimeMinutes(
+                request.availableFlightTimeMinutes(),
+                aircraft,
+                request.effectiveSafetyMarginPercent()
+        );
         Airport departureAirport = resolveDepartureAirport(request.departureAirport());
         FuelPrice fuelPrice = resolveFuelPrice(request, aircraft, departureAirport);
         WeatherService activeWeatherService = resolveWeatherService(request);
         List<FlightRoute> allPredefinedRoutes = routeRepository.findAll();
         List<FlightRoute> predefinedRoutes = routeRepository.findByDepartureAirportCode(departureAirport.code());
+
         LOGGER.info("Recommendation diagnostics: predefinedRoutesTotal={} predefinedRoutesForDeparture={} departureAirport={} availableFlightTimeMinutes={} recommendedReserveMinutes={} safetyMarginPercent={} usefulAvailableTimeMinutes={} fuelType={} fuelPricePerLiter={} fuelPriceSource={}",
                 allPredefinedRoutes.size(),
                 predefinedRoutes.size(),
@@ -134,17 +219,18 @@ public class RecommendationService {
         LOGGER.info("Recommendation diagnostics: routesReachingScoring={} predefinedReachingScoring={} generatedReachingScoring={}",
                 routesForScoring.size(), predefinedRoutes.size(), generatedRoutes.size());
 
-        var scoredRoutes = routesForScoring.stream()
+        List<ScoredRoute> scoredRoutes = routesForScoring.stream()
                 .map(route -> new ScoredRoute(
                         route,
                         toRecommendation(route, request, departureAirport, usefulAvailableTimeMinutes, cruiseSpeedKmh, fuelBurnLitersPerHour, fuelPrice, activeWeatherService)
                 ))
                 .toList();
-        var usefulTimeViableRoutes = scoredRoutes.stream()
-                .filter(scoredRoute -> isWithinAllowedTime(scoredRoute.recommendation(), usefulAvailableTimeMinutes))
+        List<ScoredRoute> usefulTimeViableRoutes = scoredRoutes.stream()
+                .filter(scoredRoute -> recommendationTimeService.isWithinAllowedTime(scoredRoute.recommendation(), usefulAvailableTimeMinutes))
                 .toList();
-        var viableScoredRoutes = diverseRecommendations(usefulTimeViableRoutes, request.preference());
-        var viableRecommendations = viableScoredRoutes.stream()
+        RecommendationSelectionResult selectionResult = recommendationSelectionService.selectDiverseRecommendations(usefulTimeViableRoutes, request.preference());
+        List<ScoredRoute> viableScoredRoutes = selectionResult.selectedRoutes();
+        List<RecommendedRouteResponse> viableRecommendations = viableScoredRoutes.stream()
                 .map(ScoredRoute::recommendation)
                 .toList();
         LOGGER.info("Recommendation diagnostics: scoredRecommendations={} discardedScoredRecommendationsByUsefulTime={} usefulTimeViableScoredRecommendations={} returnedRecommendations={}",
@@ -153,105 +239,17 @@ public class RecommendationService {
                 usefulTimeViableRoutes.size(),
                 viableRecommendations.size());
 
-        int scoredRoutesDiscardedByTime = scoredRoutes.size() - usefulTimeViableRoutes.size();
-        RecommendationDebugInfo debugInfo = new RecommendationDebugInfo(
-                generationResult.generatedCandidateRoutes(),
-                generationResult.discardedByTimeRoutes() + scoredRoutesDiscardedByTime,
-                viableRecommendations.size()
-        );
-
-        return new RecommendationResponse(viableRecommendations, warnings(viableRecommendations), debugInfo);
-    }
-
-    public RecommendationDevelopmentDebugResponse debug(RecommendationRequest request) {
-        Aircraft aircraft = resolveAircraft(request);
-        double cruiseSpeedKmh = resolveCruiseSpeed(request, aircraft);
-        double fuelBurnLitersPerHour = resolveFuelBurn(request, aircraft);
-        double usefulAvailableTimeMinutes = usefulAvailableTimeMinutes(request, aircraft);
-
-        Airport departureAirport = resolveDepartureAirport(request.departureAirport());
-        FuelPrice fuelPrice = resolveFuelPrice(request, aircraft, departureAirport);
-        WeatherService activeWeatherService = resolveWeatherService(request);
-        List<FlightRoute> predefinedRoutes = routeRepository.findByDepartureAirportCode(departureAirport.code());
-        RouteGenerationResult generationResult = routeCandidateGenerator.generateWithDebug(
-                departureAirport,
-                usefulAvailableTimeMinutes,
-                cruiseSpeedKmh,
-                request.preference()
-        );
-        List<FlightRoute> generatedRoutes = generationResult.routes();
-        List<FlightRoute> routesForScoring = Stream.concat(predefinedRoutes.stream(), generatedRoutes.stream())
-                .toList();
-        var scoredRoutes = routesForScoring.stream()
-                .map(route -> new ScoredRoute(
-                        route,
-                        toRecommendation(route, request, departureAirport, usefulAvailableTimeMinutes, cruiseSpeedKmh, fuelBurnLitersPerHour, fuelPrice, activeWeatherService)
-                ))
-                .toList();
-        var usefulTimeViableRoutes = scoredRoutes.stream()
-                .filter(scoredRoute -> isWithinAllowedTime(scoredRoute.recommendation(), usefulAvailableTimeMinutes))
-                .toList();
-        var viableScoredRoutes = diverseRecommendations(usefulTimeViableRoutes, request.preference());
-        var viableRecommendations = viableScoredRoutes.stream()
-                .map(ScoredRoute::recommendation)
-                .toList();
-        List<RecommendationRouteDiscardDebug> discards = new ArrayList<>();
-        discards.addAll(generationResult.discardedRoutes().stream()
-                .map(discard -> toDiscardDebug(discard, "GENERATED_TIME_FILTER"))
-                .toList());
-        discards.addAll(scoredRoutes.stream()
-                .filter(scoredRoute -> !isWithinAllowedTime(scoredRoute.recommendation(), usefulAvailableTimeMinutes))
-                .map(scoredRoute -> new RecommendationRouteDiscardDebug(
-                        scoredRoute.route().id(),
-                        scoredRoute.route().name(),
-                        "SCORING_TIME_FILTER",
-                        TIME_DISCARD_REASON,
-                        scoredRoute.recommendation().estimatedTimeMinutes(),
-                        round(usefulAvailableTimeMinutes * MAX_ALLOWED_TIME_OVERRUN_RATIO)
-                ))
-                .toList());
-        discards.addAll(usefulTimeViableRoutes.stream()
-                .filter(scoredRoute -> viableRecommendations.stream()
-                        .noneMatch(recommendation -> recommendation.id().equals(scoredRoute.recommendation().id())))
-                .map(scoredRoute -> new RecommendationRouteDiscardDebug(
-                        scoredRoute.route().id(),
-                        scoredRoute.route().name(),
-                        "FINAL_SELECTION",
-                        FINAL_SELECTION_DISCARD_REASON,
-                        scoredRoute.recommendation().estimatedTimeMinutes(),
-                        round(usefulAvailableTimeMinutes * MAX_ALLOWED_TIME_OVERRUN_RATIO)
-                ))
-                .toList());
-        List<RecommendationCandidateDebug> candidates = candidateDebugRows(
-                scoredRoutes,
-                generationResult.discardedRoutes(),
-                discards,
-                viableRecommendations
-        );
-
-        return new RecommendationDevelopmentDebugResponse(
-                request,
+        return new RecommendationRun(
                 aircraft,
-                request.effectivePlannedDepartureDateTime(),
-                weatherProvider(viableRecommendations),
-                viableScoredRoutes.stream()
-                        .flatMap(scoredRoute -> routeWeatherPoints(scoredRoute.route(), departureAirport).stream())
-                        .distinct()
-                        .toList(),
-                fuelPrice.fuelType(),
-                fuelPrice.pricePerLiter(),
-                fuelPrice.source().name(),
-                fuelPrice.isMock(),
-                fuelPrice.airportCode(),
-                round(usefulAvailableTimeMinutes * SIGHTSEEING_TARGET_USEFUL_TIME_RATIO),
-                round(usefulAvailableTimeMinutes),
-                generationResult.compatibleWaypointCount(),
-                generationResult.generatedCandidateRoutes(),
-                discards.size(),
-                viableRecommendations.size(),
-                candidates,
-                discards,
-                viableRecommendations
+                departureAirport,
+                fuelPrice,
+                usefulAvailableTimeMinutes,
+                generationResult,
+                scoredRoutes,
+                usefulTimeViableRoutes,
+                viableScoredRoutes,
+                viableRecommendations,
+                selectionResult.similarRoutes()
         );
     }
 
@@ -321,264 +319,6 @@ public class RecommendationService {
         );
     }
 
-    private List<ScoredRoute> diverseRecommendations(List<ScoredRoute> scoredRoutes, String preference) {
-        List<ScoredRoute> sortedRoutes = sortedBySelection(scoredRoutes, preference);
-        List<ScoredRoute> primaryRoutes = isInterIslandPreference(preference)
-                ? sortedRoutes
-                : sortedRoutes.stream()
-                .filter(scoredRoute -> !isInterIslandRoute(scoredRoute.route()))
-                .toList();
-        List<ScoredRoute> selectedRoutes = new ArrayList<>();
-        Set<String> waypointSignatures = new HashSet<>();
-        Map<String, Integer> waypointUsageCounts = new HashMap<>();
-        boolean shortPreference = isShortPreference(preference);
-
-        List<ScoredRoute> goodFitRoutes = primaryRoutes.stream()
-                .filter(scoredRoute -> routeDurationCategory(scoredRoute) == RouteDurationCategory.GOOD_FIT)
-                .toList();
-        addDiverseRoutes(goodFitRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts, false, false, true, Math.min(2, goodFitRoutes.size()));
-
-        List<ScoredRoute> preferredDurationRoutes = primaryRoutes.stream()
-                .filter(scoredRoute -> routeDurationCategory(scoredRoute) == RouteDurationCategory.GOOD_FIT
-                        || routeDurationCategory(scoredRoute) == RouteDurationCategory.LONG
-                        || routeDurationCategory(scoredRoute) == RouteDurationCategory.SLIGHTLY_OVER_TIME
-                        || (routeDurationCategory(scoredRoute) == RouteDurationCategory.SHORT && isHighScoringShortRoute(scoredRoute))
-                        || (shortPreference && routeDurationCategory(scoredRoute) == RouteDurationCategory.TOO_SHORT))
-                .toList();
-        addDiverseRoutes(preferredDurationRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts, true, true, true, MAX_RECOMMENDATIONS);
-        addDiverseRoutes(preferredDurationRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts, true, false, true, MAX_RECOMMENDATIONS);
-        addDiverseRoutes(preferredDurationRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts, false, false, true, MAX_RECOMMENDATIONS);
-        addDiverseRoutes(preferredDurationRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts, false, false, false, MAX_RECOMMENDATIONS);
-
-        List<ScoredRoute> shortRoutes = primaryRoutes.stream()
-                .filter(scoredRoute -> routeDurationCategory(scoredRoute) == RouteDurationCategory.SHORT)
-                .toList();
-        addDiverseRoutes(shortRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts, false, false, true, MAX_RECOMMENDATIONS);
-        addDiverseRoutes(shortRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts, false, false, false, MAX_RECOMMENDATIONS);
-
-        boolean hasNonTooShortAlternative = primaryRoutes.stream()
-                .anyMatch(scoredRoute -> routeDurationCategory(scoredRoute) != RouteDurationCategory.TOO_SHORT
-                        && selectedRoutes.stream().noneMatch(selectedRoute -> selectedRoute.route().id().equals(scoredRoute.route().id())));
-        if (shortPreference || !hasNonTooShortAlternative) {
-            List<ScoredRoute> tooShortRoutes = primaryRoutes.stream()
-                    .filter(scoredRoute -> routeDurationCategory(scoredRoute) == RouteDurationCategory.TOO_SHORT)
-                    .toList();
-            addDiverseRoutes(tooShortRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts, false, false, true, MAX_RECOMMENDATIONS);
-            addDiverseRoutes(tooShortRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts, false, false, false, MAX_RECOMMENDATIONS);
-        }
-
-        if (!isInterIslandPreference(preference) && selectedRoutes.size() < MAX_RECOMMENDATIONS) {
-            List<ScoredRoute> interIslandRoutes = sortedRoutes.stream()
-                    .filter(scoredRoute -> isInterIslandRoute(scoredRoute.route()))
-                    .toList();
-            addDiverseRoutes(interIslandRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts, false, false, true, MAX_RECOMMENDATIONS);
-            addDiverseRoutes(interIslandRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts, false, false, false, MAX_RECOMMENDATIONS);
-        }
-
-        return rebalanceWaypointDiversity(selectedRoutes, sortedRoutes).stream()
-                .sorted(selectionComparator(preference))
-                .toList();
-    }
-
-    private List<ScoredRoute> rebalanceWaypointDiversity(List<ScoredRoute> selectedRoutes, List<ScoredRoute> sortedRoutes) {
-        if (selectedRoutes.size() < MAX_RECOMMENDATIONS) {
-            return selectedRoutes;
-        }
-
-        List<ScoredRoute> rebalancedRoutes = new ArrayList<>();
-        Set<String> waypointSignatures = new HashSet<>();
-        Map<String, Integer> waypointUsageCounts = new HashMap<>();
-        for (ScoredRoute candidate : sortedRoutes) {
-            if (rebalancedRoutes.size() >= MAX_RECOMMENDATIONS) {
-                return rebalancedRoutes;
-            }
-
-            String waypointSignature = waypointSignature(candidate.route());
-            if (waypointSignatures.contains(waypointSignature)
-                    || usesOverrepresentedWaypoint(candidate.route(), waypointUsageCounts)) {
-                continue;
-            }
-
-            rebalancedRoutes.add(candidate);
-            waypointSignatures.add(waypointSignature);
-            recordWaypointUsage(candidate.route(), waypointUsageCounts);
-        }
-
-        for (ScoredRoute candidate : selectedRoutes) {
-            if (rebalancedRoutes.size() >= MAX_RECOMMENDATIONS) {
-                return rebalancedRoutes;
-            }
-
-            String waypointSignature = waypointSignature(candidate.route());
-            if (waypointSignatures.contains(waypointSignature)) {
-                continue;
-            }
-
-            rebalancedRoutes.add(candidate);
-            waypointSignatures.add(waypointSignature);
-        }
-
-        return rebalancedRoutes;
-    }
-
-    private List<ScoredRoute> sortedBySelection(List<ScoredRoute> scoredRoutes, String preference) {
-        return scoredRoutes.stream()
-                .sorted(selectionComparator(preference))
-                .toList();
-    }
-
-    private Comparator<ScoredRoute> selectionComparator(String preference) {
-        return Comparator
-                .comparingInt((ScoredRoute scoredRoute) -> routeExperiencePriority(scoredRoute.route(), preference))
-                .thenComparingInt(scoredRoute -> durationSelectionPriority(scoredRoute, preference))
-                .thenComparing(Comparator.comparing(
-                        (ScoredRoute scoredRoute) -> routeMatchesPreference(scoredRoute.route(), preference)
-                ).reversed())
-                .thenComparing(Comparator.comparingDouble(
-                        (ScoredRoute scoredRoute) -> scoredRoute.recommendation().sunExposureScore()
-                ).reversed())
-                .thenComparing(Comparator.comparingDouble(
-                        (ScoredRoute scoredRoute) -> scoredRoute.recommendation().weatherScore()
-                ).reversed())
-                .thenComparing(Comparator.comparingDouble(
-                        (ScoredRoute scoredRoute) -> scoredRoute.recommendation().totalScore()
-                ).reversed());
-    }
-
-    private int durationSelectionPriority(ScoredRoute scoredRoute, String preference) {
-        return switch (routeDurationCategory(scoredRoute)) {
-            case GOOD_FIT -> 0;
-            case LONG -> 1;
-            case SLIGHTLY_OVER_TIME -> 2;
-            case SHORT -> isHighScoringShortRoute(scoredRoute) ? 2 : 3;
-            case TOO_SHORT -> isShortPreference(preference) ? 1 : 4;
-            case TOO_LONG -> 5;
-        };
-    }
-
-    private int routeExperiencePriority(FlightRoute route, String preference) {
-        if (!isInterIslandRoute(route) || isInterIslandPreference(preference)) {
-            return 0;
-        }
-
-        return 1;
-    }
-
-    private RouteDurationCategory routeDurationCategory(ScoredRoute scoredRoute) {
-        return scoredRoute.recommendation().routeDurationCategory();
-    }
-
-    private boolean isHighScoringShortRoute(ScoredRoute scoredRoute) {
-        return scoredRoute.recommendation().totalScore() >= HIGH_SHORT_ROUTE_SCORE;
-    }
-
-    private void addDiverseRoutes(
-            List<ScoredRoute> sortedRoutes,
-            List<ScoredRoute> selectedRoutes,
-            Set<String> waypointSignatures,
-            Map<String, Integer> waypointUsageCounts,
-            boolean requireNewRouteType,
-            boolean requireNewPrimaryTag,
-            boolean limitRepeatedWaypoints,
-            int targetSize
-    ) {
-        for (ScoredRoute candidate : sortedRoutes) {
-            if (selectedRoutes.size() >= targetSize || selectedRoutes.size() >= MAX_RECOMMENDATIONS) {
-                return;
-            }
-
-            String waypointSignature = waypointSignature(candidate.route());
-            if (waypointSignatures.contains(waypointSignature)
-                    || selectedRoutes.stream().anyMatch(selectedRoute -> selectedRoute.route().id().equals(candidate.route().id()))) {
-                continue;
-            }
-
-            if (usesOverrepresentedWaypoint(candidate.route(), waypointUsageCounts)
-                    && (limitRepeatedWaypoints || hasDiverseAlternative(sortedRoutes, selectedRoutes, waypointSignatures, waypointUsageCounts))) {
-                continue;
-            }
-
-            if (requireNewRouteType && selectedRoutes.stream()
-                    .anyMatch(selectedRoute -> selectedRoute.route().routeType() == candidate.route().routeType())) {
-                continue;
-            }
-
-            if (requireNewPrimaryTag && selectedRoutes.stream()
-                    .anyMatch(selectedRoute -> primaryTag(selectedRoute.route()).equals(primaryTag(candidate.route())))) {
-                continue;
-            }
-
-            selectedRoutes.add(candidate);
-            waypointSignatures.add(waypointSignature);
-            recordWaypointUsage(candidate.route(), waypointUsageCounts);
-        }
-    }
-
-    private boolean hasDiverseAlternative(
-            List<ScoredRoute> sortedRoutes,
-            List<ScoredRoute> selectedRoutes,
-            Set<String> waypointSignatures,
-            Map<String, Integer> waypointUsageCounts
-    ) {
-        return sortedRoutes.stream()
-                .anyMatch(candidate -> !usesOverrepresentedWaypoint(candidate.route(), waypointUsageCounts)
-                        && !waypointSignatures.contains(waypointSignature(candidate.route()))
-                        && selectedRoutes.stream().noneMatch(selectedRoute -> selectedRoute.route().id().equals(candidate.route().id())));
-    }
-
-    private boolean usesOverrepresentedWaypoint(FlightRoute route, Map<String, Integer> waypointUsageCounts) {
-        return route.waypoints().stream()
-                .map(waypoint -> waypoint.name().toLowerCase())
-                .anyMatch(waypoint -> waypointUsageCounts.getOrDefault(waypoint, 0) >= MAX_RECOMMENDED_ROUTES_PER_WAYPOINT);
-    }
-
-    private void recordWaypointUsage(FlightRoute route, Map<String, Integer> waypointUsageCounts) {
-        route.waypoints().stream()
-                .map(waypoint -> waypoint.name().toLowerCase())
-                .forEach(waypoint -> waypointUsageCounts.merge(waypoint, 1, Integer::sum));
-    }
-
-    private String waypointSignature(FlightRoute route) {
-        return route.waypoints().stream()
-                .map(waypoint -> waypoint.name().toLowerCase())
-                .sorted()
-                .reduce((first, second) -> first + "|" + second)
-                .orElse(route.id());
-    }
-
-    private String primaryTag(FlightRoute route) {
-        return route.tags().isEmpty() ? "" : route.tags().getFirst();
-    }
-
-    private Airport resolveDepartureAirport(String departureAirportCode) {
-        return airportRepository.findByCode(departureAirportCode)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST,
-                        "departureAirport must match a known airport"
-                ));
-    }
-
-    private double usefulAvailableTimeMinutes(RecommendationRequest request, Aircraft aircraft) {
-        double availableAfterReserveMinutes = Math.max(
-                0.0,
-                request.availableFlightTimeMinutes() - aircraft.recommendedReserveMinutes()
-        );
-
-        return availableAfterReserveMinutes * (100.0 - request.effectiveSafetyMarginPercent()) / 100.0;
-    }
-
-    private boolean isWithinAllowedTime(RecommendedRouteResponse recommendation, double availableTimeMinutes) {
-        return recommendation.estimatedTimeMinutes() <= availableTimeMinutes * MAX_ALLOWED_TIME_OVERRUN_RATIO;
-    }
-
-    private List<String> warnings(List<RecommendedRouteResponse> recommendations) {
-        if (recommendations.size() >= MIN_RECOMMENDATIONS) {
-            return List.of();
-        }
-
-        return List.of("Fewer than 3 candidate routes fit within the available flight time plus 25% tolerance.");
-    }
-
     private RecommendedRouteResponse toRecommendation(
             FlightRoute route,
             RecommendationRequest request,
@@ -592,7 +332,7 @@ public class RecommendationService {
         double approximateDistanceKm = routeCalculationService.totalDistanceKm(route);
         double baseFlightTimeHours = routeCalculationService.estimatedTimeHours(approximateDistanceKm, cruiseSpeedKmh);
         double baseFlightTimeMinutes = routeCalculationService.estimatedTimeMinutes(baseFlightTimeHours);
-        double sightseeingTimeMinutes = sightseeingTimeMinutes(route, baseFlightTimeMinutes, usefulFlightTimeMinutes);
+        double sightseeingTimeMinutes = sightseeingService.sightseeingTimeMinutes(route, baseFlightTimeMinutes, usefulFlightTimeMinutes);
         double estimatedTimeMinutes = baseFlightTimeMinutes + sightseeingTimeMinutes;
         double estimatedTimeHours = estimatedTimeMinutes / 60.0;
         double estimatedFuelLiters = routeCalculationService.estimatedFuelLiters(estimatedTimeMinutes, fuelBurnLitersPerHour);
@@ -600,7 +340,13 @@ public class RecommendationService {
         String plannedDepartureDateTime = request.effectivePlannedDepartureDateTime();
         LocalDateTime parsedPlannedDepartureDateTime = LocalDateTime.parse(plannedDepartureDateTime);
         WeatherData fallbackWeatherData = activeWeatherService.weatherFor(route, parsedPlannedDepartureDateTime);
-        RouteWeatherSummary routeWeatherSummary = routeWeatherSummary(route, departureAirport, parsedPlannedDepartureDateTime, fallbackWeatherData, activeWeatherService);
+        RouteWeatherSummary routeWeatherSummary = routeWeatherSummaryService.routeWeatherSummary(
+                route,
+                departureAirport,
+                parsedPlannedDepartureDateTime,
+                fallbackWeatherData,
+                activeWeatherService
+        );
         WeatherData weatherData = new WeatherData(
                 routeWeatherSummary.averageWindKmh(),
                 routeWeatherSummary.averageCloudCoverPercent(),
@@ -611,10 +357,10 @@ public class RecommendationService {
                 routeWeatherSummary.provider(),
                 routeWeatherSummary.isMock()
         );
-        double sunAzimuthDegrees = sunAzimuthDegrees(plannedDepartureDateTime);
-        List<SightseeingManeuverResponse> sightseeingManeuvers = sightseeingManeuvers(route, sightseeingTimeMinutes, cruiseSpeedKmh, sunAzimuthDegrees);
-        List<Waypoint> flightPath = flightPath(route, airportWaypoint(departureAirport), sightseeingManeuvers);
-        double sunExposureScore = sunExposureScore(route, airportWaypoint(departureAirport), sunAzimuthDegrees, plannedDepartureDateTime);
+        double sunAzimuthDegrees = sunExposureService.sunAzimuthDegrees(plannedDepartureDateTime);
+        List<SightseeingManeuverResponse> sightseeingManeuvers = sightseeingService.sightseeingManeuvers(route, sightseeingTimeMinutes, cruiseSpeedKmh, sunAzimuthDegrees);
+        List<Waypoint> flightPath = sightseeingService.flightPath(route, airportWaypoint(departureAirport), sightseeingManeuvers);
+        double sunExposureScore = sunExposureService.sunExposureScore(route, airportWaypoint(departureAirport), sunAzimuthDegrees, plannedDepartureDateTime);
         RouteScore score = routeScoringService.score(
                 route,
                 estimatedTimeMinutes,
@@ -639,10 +385,10 @@ public class RecommendationService {
                 plannedDepartureDateTime,
                 round(sunAzimuthDegrees),
                 round(sunExposureScore),
-                sunExposureSummary(sunExposureScore, sunAzimuthDegrees),
+                sunExposureService.sunExposureSummary(sunExposureScore, sunAzimuthDegrees),
                 round(estimatedTimeMinutes),
                 round(estimatedTimeHours),
-                routeDurationCategory(estimatedTimeMinutes, usefulFlightTimeMinutes),
+                recommendationTimeService.routeDurationCategory(estimatedTimeMinutes, usefulFlightTimeMinutes),
                 roundOneDecimal(estimatedFuelLiters),
                 fuelPrice.pricePerLiter(),
                 fuelPrice.source().name(),
@@ -666,425 +412,16 @@ public class RecommendationService {
         );
     }
 
-    private RecommendedRouteResponse withRouteWeatherSummary(
-            RecommendedRouteResponse recommendation,
-            FlightRoute route,
-            Airport departureAirport
-    ) {
-        LocalDateTime plannedDepartureDateTime = LocalDateTime.parse(recommendation.plannedDepartureDateTime());
-        WeatherData fallbackWeatherData = new WeatherData(
-                recommendation.windKmh(),
-                recommendation.cloudCoverPercent(),
-                recommendation.precipitationProbability(),
-                recommendation.visibilityKm(),
-                recommendation.temperatureCelsius(),
-                recommendation.weatherScore()
-        );
-        RouteWeatherSummary routeWeatherSummary = routeWeatherSummary(route, departureAirport, plannedDepartureDateTime, fallbackWeatherData, weatherService);
-
-        return new RecommendedRouteResponse(
-                recommendation.id(),
-                recommendation.name(),
-                recommendation.description(),
-                recommendation.routeType(),
-                recommendation.waypoints(),
-                recommendation.flightPath(),
-                recommendation.sightseeingManeuvers(),
-                recommendation.approximateDistanceKm(),
-                recommendation.baseFlightTimeMinutes(),
-                recommendation.sightseeingTimeMinutes(),
-                recommendation.plannedDepartureDateTime(),
-                recommendation.sunAzimuthDegrees(),
-                recommendation.sunExposureScore(),
-                recommendation.sunExposureSummary(),
-                recommendation.estimatedTimeMinutes(),
-                recommendation.estimatedTimeHours(),
-                recommendation.routeDurationCategory(),
-                recommendation.estimatedFuelLiters(),
-                recommendation.fuelPricePerLiter(),
-                recommendation.fuelPriceSource(),
-                recommendation.fuelPriceIsMock(),
-                recommendation.fuelTypeUsed(),
-                recommendation.fuelPriceAirportCode(),
-                recommendation.estimatedCost(),
-                recommendation.totalScore(),
-                recommendation.weatherScore(),
-                recommendation.weatherProvider(),
-                recommendation.weatherIsMock(),
-                recommendation.windKmh(),
-                recommendation.cloudCoverPercent(),
-                recommendation.precipitationProbability(),
-                recommendation.visibilityKm(),
-                recommendation.temperatureCelsius(),
-                routeWeatherSummary,
-                recommendation.scoreBreakdown(),
-                recommendation.explanation(),
-                recommendation.warnings()
-        );
-    }
-
-    private RouteWeatherSummary routeWeatherSummary(
-            FlightRoute route,
-            Airport departureAirport,
-            LocalDateTime plannedDepartureDateTime,
-            WeatherData fallbackWeatherData,
-            WeatherService activeWeatherService
-    ) {
-        List<WeatherData> pointWeatherData = routeWeatherPoints(route, departureAirport).stream()
-                .map(point -> weatherForPoint(point, plannedDepartureDateTime, fallbackWeatherData, activeWeatherService))
-                .toList();
-
-        return new RouteWeatherSummary(
-                round(pointWeatherData.stream().mapToDouble(WeatherData::windKmh).average().orElse(fallbackWeatherData.windKmh())),
-                round(pointWeatherData.stream().mapToDouble(WeatherData::windKmh).max().orElse(fallbackWeatherData.windKmh())),
-                round(pointWeatherData.stream().mapToDouble(WeatherData::cloudCoverPercent).average().orElse(fallbackWeatherData.cloudCoverPercent())),
-                round(pointWeatherData.stream().mapToDouble(WeatherData::precipitationProbability).max().orElse(fallbackWeatherData.precipitationProbability())),
-                round(pointWeatherData.stream().mapToDouble(WeatherData::visibilityKm).min().orElse(fallbackWeatherData.visibilityKm())),
-                round(pointWeatherData.stream().mapToDouble(WeatherData::temperatureCelsius).average().orElse(fallbackWeatherData.temperatureCelsius())),
-                round(weatherScore(
-                        pointWeatherData.stream().mapToDouble(WeatherData::windKmh).average().orElse(fallbackWeatherData.windKmh()),
-                        pointWeatherData.stream().mapToDouble(WeatherData::windKmh).max().orElse(fallbackWeatherData.windKmh()),
-                        pointWeatherData.stream().mapToDouble(WeatherData::cloudCoverPercent).average().orElse(fallbackWeatherData.cloudCoverPercent()),
-                        pointWeatherData.stream().mapToDouble(WeatherData::precipitationProbability).max().orElse(fallbackWeatherData.precipitationProbability()),
-                        pointWeatherData.stream().mapToDouble(WeatherData::visibilityKm).min().orElse(fallbackWeatherData.visibilityKm())
-                )),
-                pointWeatherData.stream().anyMatch(weatherData -> !weatherData.isMock()) ? "open-meteo" : "mock",
-                pointWeatherData.stream().allMatch(WeatherData::isMock)
-        );
-    }
-
-    private WeatherData weatherForPoint(
-            Waypoint point,
-            LocalDateTime plannedDepartureDateTime,
-            WeatherData fallbackWeatherData,
-            WeatherService activeWeatherService
-    ) {
-        try {
-            return activeWeatherService.weatherFor(point.latitude(), point.longitude(), plannedDepartureDateTime);
-        } catch (WeatherServiceException exception) {
-            return fallbackWeatherData;
-        }
-    }
-
-    private List<Waypoint> routeWeatherPoints(FlightRoute route, Airport departureAirport) {
-        Map<String, Waypoint> selectedPoints = new LinkedHashMap<>();
-        addWeatherPoint(selectedPoints, airportWaypoint(departureAirport));
-
-        if (!route.waypoints().isEmpty()) {
-            addWeatherPoint(selectedPoints, route.waypoints().getFirst());
-            addWeatherPoint(selectedPoints, route.waypoints().getLast());
-        }
-
-        return selectedPoints.values().stream()
-                .limit(3)
-                .toList();
-    }
-
-    private void addWeatherPoint(Map<String, Waypoint> points, Waypoint point) {
-        points.putIfAbsent(point.latitude() + ":" + point.longitude(), point);
-    }
-
-    private double sightseeingTimeMinutes(FlightRoute route, double baseFlightTimeMinutes, double usefulFlightTimeMinutes) {
-        if (isInterIslandRoute(route)
-                || normalizedScenicScore(route) < LOCAL_ROUTE_SIGHTSEEING_MIN_SCENIC_SCORE
-                || usefulFlightTimeMinutes <= 0.0
-                || baseFlightTimeMinutes <= 0.0) {
-            return 0.0;
-        }
-
-        double targetComfortableDurationMinutes = usefulFlightTimeMinutes * SIGHTSEEING_TARGET_USEFUL_TIME_RATIO;
-        double missingMinutes = (targetComfortableDurationMinutes - baseFlightTimeMinutes) * SIGHTSEEING_AVAILABLE_MARGIN_RATIO;
-        if (missingMinutes <= 0.0) {
-            return 0.0;
-        }
-
-        double waypointLimitMinutes = route.waypoints().size() * MAX_SIGHTSEEING_MINUTES_PER_WAYPOINT;
-        double routeRatioLimitMinutes = baseFlightTimeMinutes * MAX_SIGHTSEEING_ROUTE_RATIO;
-
-        return Math.min(missingMinutes, Math.min(MAX_TOTAL_SIGHTSEEING_MINUTES, Math.min(waypointLimitMinutes, routeRatioLimitMinutes)));
-    }
-
     private Waypoint airportWaypoint(Airport airport) {
         return new Waypoint(airport.code(), airport.latitude(), airport.longitude());
     }
 
-    private List<Waypoint> flightPath(
-            FlightRoute route,
-            Waypoint departureAirport,
-            List<SightseeingManeuverResponse> sightseeingManeuvers
-    ) {
-        List<Waypoint> flightPath = new ArrayList<>();
-        flightPath.add(departureAirport);
-
-        route.waypoints().forEach(waypoint -> {
-            flightPath.add(waypoint);
-            SightseeingManeuverResponse maneuver = sightseeingManeuverFor(waypoint, sightseeingManeuvers);
-            if (maneuver != null) {
-                flightPath.addAll(maneuver.orbitPath());
-                flightPath.add(waypoint);
-            }
-        });
-
-        flightPath.add(departureAirport);
-
-        return flightPath;
-    }
-
-    private List<SightseeingManeuverResponse> sightseeingManeuvers(
-            FlightRoute route,
-            double sightseeingTimeMinutes,
-            double cruiseSpeedKmh,
-            double sunAzimuthDegrees
-    ) {
-        if (sightseeingTimeMinutes <= 0.0) {
+    private List<String> warnings(List<RecommendedRouteResponse> recommendations) {
+        if (recommendations.size() >= MIN_RECOMMENDATIONS) {
             return List.of();
         }
 
-        List<Waypoint> sightseeingWaypoints = sightseeingWaypoints(route);
-        double sightseeingMinutesPerWaypoint = sightseeingTimeMinutes / sightseeingWaypoints.size();
-
-        return sightseeingWaypoints.stream()
-                .map(waypoint -> {
-                    double radiusKm = sightseeingOrbitRadiusKm(sightseeingMinutesPerWaypoint, cruiseSpeedKmh);
-                    double preferredViewingBearingDegrees = preferredViewingBearingDegrees(sunAzimuthDegrees);
-                    List<Waypoint> orbitPath = sightseeingOrbit(waypoint, radiusKm, preferredViewingBearingDegrees);
-                    return new SightseeingManeuverResponse(
-                            waypoint.name(),
-                            "SUN_ORIENTED_CLOCKWISE_ORBIT",
-                            round(sightseeingMinutesPerWaypoint),
-                            round(radiusKm),
-                            round(sunAzimuthDegrees),
-                            round(preferredViewingBearingDegrees),
-                            orbitPath,
-                            "Realizar una orbita visual orientada por sol alrededor de " + waypoint.name()
-                                    + " durante " + round(sightseeingMinutesPerWaypoint)
-                                    + " minutos, radio aproximado " + round(radiusKm)
-                                    + " km, iniciando por el sector " + round(preferredViewingBearingDegrees)
-                                    + " grados para mantener el sol lateral y mejorar la observacion."
-                    );
-                })
-                .toList();
-    }
-
-    private List<Waypoint> sightseeingWaypoints(FlightRoute route) {
-        if (route.waypoints().isEmpty()) {
-            return List.of();
-        }
-
-        Map<String, Waypoint> selectedWaypoints = new LinkedHashMap<>();
-        addWeatherPoint(selectedWaypoints, route.waypoints().getFirst());
-        addWeatherPoint(selectedWaypoints, route.waypoints().getLast());
-
-        return selectedWaypoints.values().stream()
-                .limit(2)
-                .toList();
-    }
-
-    private SightseeingManeuverResponse sightseeingManeuverFor(
-            Waypoint waypoint,
-            List<SightseeingManeuverResponse> sightseeingManeuvers
-    ) {
-        return sightseeingManeuvers.stream()
-                .filter(maneuver -> maneuver.waypointName().equals(waypoint.name()))
-                .findFirst()
-                .orElse(null);
-    }
-
-    private double sightseeingOrbitRadiusKm(double sightseeingMinutes, double cruiseSpeedKmh) {
-        double orbitDistanceKm = cruiseSpeedKmh * sightseeingMinutes / 60.0;
-
-        return Math.max(
-                SIGHTSEEING_ORBIT_MIN_RADIUS_KM,
-                Math.min(SIGHTSEEING_ORBIT_MAX_RADIUS_KM, orbitDistanceKm / (2.0 * Math.PI))
-        );
-    }
-
-    private double preferredViewingBearingDegrees(double sunAzimuthDegrees) {
-        if (sunAzimuthDegrees == 0.0) {
-            return 0.0;
-        }
-
-        return (sunAzimuthDegrees + 90.0) % 360.0;
-    }
-
-    private List<Waypoint> sightseeingOrbit(Waypoint center, double radiusKm, double startBearingDegrees) {
-        List<Waypoint> orbit = new ArrayList<>();
-
-        for (int segment = 0; segment <= SIGHTSEEING_ORBIT_SEGMENTS; segment++) {
-            double angle = Math.toRadians(startBearingDegrees) + 2.0 * Math.PI * segment / SIGHTSEEING_ORBIT_SEGMENTS;
-            double latitudeOffset = radiusKm * Math.cos(angle) / 111.32;
-            double longitudeScale = 111.32 * Math.cos(Math.toRadians(center.latitude()));
-            double longitudeOffset = longitudeScale == 0.0 ? 0.0 : radiusKm * Math.sin(angle) / longitudeScale;
-
-            orbit.add(new Waypoint(
-                    center.name() + " scenic orbit",
-                    center.latitude() + latitudeOffset,
-                    center.longitude() + longitudeOffset
-            ));
-        }
-
-        return orbit;
-    }
-
-    private double sunAzimuthDegrees(String plannedDepartureDateTime) {
-        int minutes = localTimeMinutes(plannedDepartureDateTime);
-        if (minutes < 420 || minutes > 1200) {
-            return 0.0;
-        }
-
-        double daylightProgress = (minutes - 420.0) / (1200.0 - 420.0);
-
-        return 90.0 + daylightProgress * 180.0;
-    }
-
-    private double sunExposureScore(FlightRoute route, Waypoint departureAirport, double sunAzimuthDegrees, String plannedDepartureDateTime) {
-        int minutes = localTimeMinutes(plannedDepartureDateTime);
-        if (minutes < 420 || minutes > 1200) {
-            return 15.0;
-        }
-
-        List<Waypoint> points = new ArrayList<>();
-        points.add(departureAirport);
-        points.addAll(route.waypoints());
-        points.add(departureAirport);
-
-        return pointsForLegs(points).stream()
-                .mapToDouble(leg -> legSunExposureScore(leg.first(), leg.second(), sunAzimuthDegrees))
-                .average()
-                .orElse(60.0);
-    }
-
-    private List<Leg> pointsForLegs(List<Waypoint> points) {
-        List<Leg> legs = new ArrayList<>();
-        for (int i = 0; i < points.size() - 1; i++) {
-            legs.add(new Leg(points.get(i), points.get(i + 1)));
-        }
-
-        return legs;
-    }
-
-    private double legSunExposureScore(Waypoint from, Waypoint to, double sunAzimuthDegrees) {
-        double bearing = bearingDegrees(from, to);
-        double angle = Math.abs(bearing - sunAzimuthDegrees);
-        double smallestAngle = Math.min(angle, 360.0 - angle);
-
-        if (smallestAngle < 25.0) {
-            return 25.0;
-        }
-
-        if (smallestAngle < 45.0) {
-            return 45.0;
-        }
-
-        if (smallestAngle < 80.0) {
-            return 75.0;
-        }
-
-        return 95.0;
-    }
-
-    private double bearingDegrees(Waypoint from, Waypoint to) {
-        double fromLatitude = Math.toRadians(from.latitude());
-        double toLatitude = Math.toRadians(to.latitude());
-        double longitudeDelta = Math.toRadians(to.longitude() - from.longitude());
-        double y = Math.sin(longitudeDelta) * Math.cos(toLatitude);
-        double x = Math.cos(fromLatitude) * Math.sin(toLatitude)
-                - Math.sin(fromLatitude) * Math.cos(toLatitude) * Math.cos(longitudeDelta);
-
-        return (Math.toDegrees(Math.atan2(y, x)) + 360.0) % 360.0;
-    }
-
-    private String sunExposureSummary(double sunExposureScore, double sunAzimuthDegrees) {
-        if (sunAzimuthDegrees == 0.0) {
-            return "Hora con luz solar baja o nocturna; se penaliza para vuelo escenico visual.";
-        }
-
-        if (sunExposureScore >= 80.0) {
-            return "Buena orientacion solar: la ruta evita tramos largos con sol frontal.";
-        }
-
-        if (sunExposureScore >= 55.0) {
-            return "Orientacion solar aceptable, con algun tramo potencialmente incomodo.";
-        }
-
-        return "Orientacion solar desfavorable: varios tramos pueden quedar con sol frontal.";
-    }
-
-    private int localTimeMinutes(String plannedDepartureDateTime) {
-        String localTime = plannedDepartureDateTime.contains("T")
-                ? plannedDepartureDateTime.substring(plannedDepartureDateTime.indexOf('T') + 1)
-                : plannedDepartureDateTime;
-        String[] parts = localTime.split(":");
-
-        return Integer.parseInt(parts[0]) * 60 + Integer.parseInt(parts[1]);
-    }
-
-    private double normalizedScenicScore(FlightRoute route) {
-        if (route.scenicScore() <= 10.0) {
-            return route.scenicScore() * 10.0;
-        }
-
-        return Math.min(100.0, route.scenicScore());
-    }
-
-    private RouteDurationCategory routeDurationCategory(double estimatedTimeMinutes, double usefulAvailableTimeMinutes) {
-        if (usefulAvailableTimeMinutes <= 0.0) {
-            return RouteDurationCategory.TOO_LONG;
-        }
-
-        double usageRatio = estimatedTimeMinutes / usefulAvailableTimeMinutes;
-
-        if (usageRatio < 0.4) {
-            return RouteDurationCategory.TOO_SHORT;
-        }
-
-        if (usageRatio < 0.7) {
-            return RouteDurationCategory.SHORT;
-        }
-
-        if (usageRatio < LOW_TIME_MARGIN_RATIO) {
-            return RouteDurationCategory.GOOD_FIT;
-        }
-
-        if (usageRatio <= 1.0) {
-            return RouteDurationCategory.LONG;
-        }
-
-        if (usageRatio <= MAX_ALLOWED_TIME_OVERRUN_RATIO) {
-            return RouteDurationCategory.SLIGHTLY_OVER_TIME;
-        }
-
-        return RouteDurationCategory.TOO_LONG;
-    }
-
-    private String weatherProvider(List<RecommendedRouteResponse> recommendations) {
-        if (recommendations.stream().anyMatch(recommendation -> !recommendation.weatherIsMock())) {
-            return "open-meteo";
-        }
-
-        return "mock";
-    }
-
-    private double weatherScore(
-            double averageWindKmh,
-            double maxWindKmh,
-            double averageCloudCoverPercent,
-            double maxPrecipitationProbability,
-            double minVisibilityKm
-    ) {
-        double windScore = 100.0 - Math.min(100.0, ((averageWindKmh * 0.65) + (maxWindKmh * 0.35)) / 45.0 * 100.0);
-        double cloudScore = averageCloudCoverPercent <= 55.0
-                ? 100.0 - Math.abs(averageCloudCoverPercent - 30.0) * 0.7
-                : 82.5 - (averageCloudCoverPercent - 55.0) * 1.5;
-        double precipitationScore = 100.0 - maxPrecipitationProbability * 1.45;
-        double visibilityScore = minVisibilityKm >= 20.0
-                ? 100.0
-                : Math.max(0.0, minVisibilityKm / 20.0 * 100.0);
-
-        return clampScore(windScore * 0.30
-                + cloudScore * 0.20
-                + precipitationScore * 0.35
-                + visibilityScore * 0.15);
+        return List.of("Fewer than 3 candidate routes fit within the available flight time plus 25% tolerance.");
     }
 
     private List<String> routeWarnings(
@@ -1093,7 +430,7 @@ public class RecommendationService {
             double estimatedCost,
             WeatherData weatherData
     ) {
-        List<String> warnings = new java.util.ArrayList<>();
+        List<String> warnings = new ArrayList<>();
 
         if (estimatedTimeMinutes > availableTimeMinutes) {
             warnings.add("Esta ruta supera ligeramente el tiempo disponible");
@@ -1117,6 +454,14 @@ public class RecommendationService {
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.BAD_REQUEST,
                         "aircraftId must match a known aircraft"
+                ));
+    }
+
+    private Airport resolveDepartureAirport(String departureAirportCode) {
+        return airportRepository.findByCode(departureAirportCode)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "departureAirport must match a known airport"
                 ));
     }
 
@@ -1192,7 +537,7 @@ public class RecommendationService {
             WeatherData weatherData,
             double sunExposureScore
     ) {
-        String timeFit = timeFitText(estimatedTimeMinutes, usefulFlightTimeMinutes);
+        String timeFit = recommendationTimeService.timeFitText(estimatedTimeMinutes, usefulFlightTimeMinutes);
         String scenicFit = score.scenicScore() >= 85.0
                 ? "un alto interes visual"
                 : "un interes visual correcto";
@@ -1204,7 +549,6 @@ public class RecommendationService {
         String preferenceFit = routeMatchesPreference(route, request.preference())
                 ? "encaja con la preferencia " + request.preference()
                 : "no encaja directamente con la preferencia " + request.preference();
-
         String weatherProviderText = weatherData.isMock()
                 ? "meteorologia simulada/mock"
                 : "meteorologia estimada con Open-Meteo";
@@ -1232,6 +576,14 @@ public class RecommendationService {
                 + roundTwoDecimals(estimatedCost) + " EUR." + sunFit + routeExperience;
     }
 
+    private String weatherProvider(List<RecommendedRouteResponse> recommendations) {
+        if (recommendations.stream().anyMatch(recommendation -> !recommendation.weatherIsMock())) {
+            return "open-meteo";
+        }
+
+        return "mock";
+    }
+
     private boolean routeMatchesPreference(FlightRoute route, String preference) {
         if (preference == null || preference.isBlank()) {
             return false;
@@ -1239,10 +591,6 @@ public class RecommendationService {
 
         return route.tags().stream()
                 .anyMatch(tag -> tag.equalsIgnoreCase(preference.trim()));
-    }
-
-    private boolean isShortPreference(String preference) {
-        return preference != null && preference.trim().equalsIgnoreCase("short");
     }
 
     private boolean isInterIslandRoute(FlightRoute route) {
@@ -1263,28 +611,6 @@ public class RecommendationService {
                 || normalizedPreference.equals("adventure");
     }
 
-    private String timeFitText(double estimatedTimeMinutes, double availableTimeMinutes) {
-        if (availableTimeMinutes <= 0.0) {
-            return "no puede evaluarse contra el tiempo disponible";
-        }
-
-        double usageRatio = estimatedTimeMinutes / availableTimeMinutes;
-
-        if (usageRatio < 0.7) {
-            return "aprovecha poco el tiempo disponible";
-        }
-
-        if (usageRatio <= 1.0) {
-            return "aprovecha bien el tiempo disponible";
-        }
-
-        if (usageRatio <= MAX_ALLOWED_TIME_OVERRUN_RATIO) {
-            return "aprovecha demasiado el tiempo disponible";
-        }
-
-        return "supera demasiado el tiempo disponible";
-    }
-
     private double round(double value) {
         return Math.round(value * 100.0) / 100.0;
     }
@@ -1301,15 +627,17 @@ public class RecommendationService {
         return Math.max(0.0, Math.min(100.0, value));
     }
 
-    private record Leg(
-            Waypoint first,
-            Waypoint second
-    ) {
-    }
-
-    private record ScoredRoute(
-            FlightRoute route,
-            RecommendedRouteResponse recommendation
+    private record RecommendationRun(
+            Aircraft aircraft,
+            Airport departureAirport,
+            FuelPrice fuelPrice,
+            double usefulAvailableTimeMinutes,
+            RouteGenerationResult generationResult,
+            List<ScoredRoute> scoredRoutes,
+            List<ScoredRoute> usefulTimeViableRoutes,
+            List<ScoredRoute> viableScoredRoutes,
+            List<RecommendedRouteResponse> viableRecommendations,
+            List<ScoredRoute> similarRoutes
     ) {
     }
 }

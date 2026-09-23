@@ -19,7 +19,8 @@ class RouteCandidateGeneratorTest {
     private final RouteCalculationService routeCalculationService = new RouteCalculationService();
     private final RouteCandidateGenerator generator = new RouteCandidateGenerator(
             new MockWaypointRepository(),
-            routeCalculationService
+            routeCalculationService,
+            new RouteCandidateSelectionService(new RouteSimilarityService(routeCalculationService))
     );
 
     @Test

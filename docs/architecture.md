@@ -12,7 +12,7 @@ Capas principales:
 - `flightdiscovery.paull.api`: controladores REST y DTOs de entrada/salida.
 - `flightdiscovery.paull.api.health`: endpoint de salud.
 - `flightdiscovery.paull.api.recommendation`: endpoints de recomendaciones y diagnostico.
-- `flightdiscovery.paull.application.recommendation`: orquestacion de recomendaciones, generacion de candidatas, diversidad y descartes.
+- `flightdiscovery.paull.application.recommendation`: orquestacion de recomendaciones, generacion de candidatas, tiempo/duracion, seleccion final, sightseeing, exposicion solar, resumen meteorologico de ruta, diversidad y descartes.
 - `flightdiscovery.paull.domain.calculation`: calculos de distancia, tiempo, combustible y coste.
 - `flightdiscovery.paull.domain.model`: modelos de aeropuerto, avion, ruta, waypoint, meteorologia, precio y score.
 - `flightdiscovery.paull.domain.repository`: repositorios mock en memoria.
@@ -22,8 +22,8 @@ Capas principales:
 ## Flujo de Recomendacion
 
 1. `RecommendationController` valida la request.
-2. `RecommendationService` resuelve aeropuerto, avion, velocidad, consumo, precio de combustible y tiempo util.
-3. `usefulAvailableTimeMinutes` se calcula restando la reserva recomendada del avion y aplicando el margen de seguridad. Este valor funciona como limite operativo y orientacion, no como obligacion de rellenar minutos.
+2. `RecommendationService` resuelve aeropuerto, avion, velocidad, consumo y precio de combustible, y coordina servicios especializados sin cambiar el contrato publico.
+3. `RecommendationTimeService` calcula `usefulAvailableTimeMinutes` restando la reserva recomendada del avion y aplicando el margen de seguridad. Este valor funciona como limite operativo y orientacion, no como obligacion de rellenar minutos.
 4. `targetDurationMinutes` es una referencia interna para scoring temporal. Actualmente equivale a `usefulAvailableTimeMinutes * 0.85`, pero la seleccion final puede preferir rutas locales mas cortas cuando tienen mas sentido recreativo.
 5. `RouteCandidateGenerator` crea rutas circulares generadas con 1, 2 y, cuando hay al menos 90 minutos utiles, 3 o mas waypoints visuales compatibles con el aeropuerto.
 6. Las rutas generadas se filtran por tolerancia maxima de 125% del tiempo util.
@@ -32,10 +32,11 @@ Capas principales:
    - `medium`: 50% - 75%.
    - `long`: 75% - 100%.
    - `extended`: 100% - 125%.
-8. El generador selecciona hasta 30 candidatas buscando variedad de bandas y tipos de ruta. Cuando la preferencia no es interinsular, las rutas locales se ordenan por delante de travesias entre islas.
-9. Para cada ruta se consultan hasta 3 puntos meteorologicos y se crea `RouteWeatherSummary`.
+8. `RouteCandidateSelectionService` selecciona hasta 30 candidatas buscando variedad de bandas y tipos de ruta. Cuando la preferencia no es interinsular, las rutas locales se ordenan por delante de travesias entre islas.
+9. Para cada ruta `RouteWeatherSummaryService` consulta hasta 3 puntos meteorologicos y crea `RouteWeatherSummary`.
 10. `RouteScoringService` calcula `weatherScore`, `timeFitScore`, `preferenceScore`, `scenicScore`, `costScore` y `totalScore`.
-10. `RecommendationService` calcula tiempo base, tiempo de observacion escenica local, `routeDurationCategory`, diversidad final y devuelve hasta 5 recomendaciones.
+10. `SightseeingService` calcula tiempo de observacion escenica local, maniobras y `flightPath`; `SunExposureService` calcula azimut solar, exposicion y resumen de orientacion.
+10. `RecommendationSelectionService` aplica la seleccion final diversa y devuelve hasta 5 recomendaciones.
 11. Las rutas que superan el tiempo util pero no el 125% se permiten con warning.
 
 ## Scoring
@@ -68,7 +69,7 @@ La request tambien puede incluir `weatherProvider=mock` o `weatherProvider=open-
 
 `OpenMeteoWeatherService` consulta forecast horario con latitud, longitud y fecha/hora local planificada. Mantiene cache en memoria usando latitud, longitud y hora redondeadas. Si Open-Meteo falla durante una recomendacion, el servicio cae a datos mock controlados para conservar una respuesta explicable.
 
-`RouteWeatherSummary` combina hasta 3 puntos por ruta: salida, waypoint principal/intermedio y ultimo waypoint antes del regreso. Incluye viento medio/maximo, nubosidad media, precipitacion maxima, visibilidad minima, temperatura media, provider e indicador `isMock`.
+`RouteWeatherSummaryService` combina hasta 3 puntos por ruta: salida, waypoint principal/intermedio y ultimo waypoint antes del regreso. Incluye viento medio/maximo, nubosidad media, precipitacion maxima, visibilidad minima, temperatura media, provider e indicador `isMock`.
 
 ## Fuel
 
@@ -105,9 +106,22 @@ La generacion usa bandas de duracion para que el conjunto de candidatas no quede
 
 Para rutas interinsulares desde GCLP, el catalogo mock permite usar puntos de Tenerife como referencias visuales adicionales cuando la preferencia es `inter-island` o `cross-country`. La intencion es proponer rutas recreativas con puntos cercanos de ambas islas, sin convertir esos puntos en autorizaciones operacionales.
 
-Las rutas locales de alto valor visual pueden recibir `sightseeingTimeMinutes`: minutos explicitos de observacion escenica. No se usan para alargar artificialmente el vuelo; aumentan el tiempo estimado, combustible y coste de forma transparente. Los limites actuales son 6 minutos por waypoint, 15 minutos por ruta y un maximo del 20% del tiempo base.
+Las rutas locales de alto valor visual pueden recibir `sightseeingTimeMinutes`: minutos explicitos de observacion escenica. No se usan para alargar artificialmente el vuelo; aumentan el tiempo estimado, combustible y coste de forma transparente. Los limites actuales son 12 minutos por waypoint, 30 minutos por ruta y un maximo del 85% del tiempo base.
 
 Cuando una ruta incluye observacion escenica, la respuesta devuelve `sightseeingManeuvers` con waypoint, duracion, radio e instruccion, y `flightPath` con puntos intermedios de orbita para que el mapa pinte la maniobra en vez de representar solo lineas rectas entre waypoints.
+
+## Servicios internos de recomendacion
+
+La API externa no cambia, pero la logica interna se divide en responsabilidades mas pequenas:
+
+- `RecommendationService`: orquesta la request, fusiona rutas predefinidas/generadas y construye la respuesta.
+- `RecommendationTimeService`: tiempo util, tolerancia del 125%, categoria de duracion y textos de encaje temporal.
+- `RecommendationSelectionService`: seleccion final, diversidad de waypoints/tipos/tags y prioridad local frente a interinsular.
+- `RouteCandidateGenerator`: crea rutas dinamicas y descarta las que no caben en tiempo.
+- `RouteCandidateSelectionService`: limita candidatas generadas por preferencia, banda de duracion y tipo de ruta.
+- `SightseeingService`: tiempo de observacion, orbitas escenicas y `flightPath`.
+- `SunExposureService`: azimut solar aproximado, puntuacion de exposicion y resumen textual.
+- `RouteWeatherSummaryService`: puntos meteorologicos por ruta, fallback y agregado multipunto.
 
 ## Debug
 

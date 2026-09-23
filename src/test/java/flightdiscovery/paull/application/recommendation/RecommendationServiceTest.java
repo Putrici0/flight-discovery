@@ -26,15 +26,28 @@ import flightdiscovery.paull.domain.weather.MockWeatherService;
 class RecommendationServiceTest {
 
     private static final int CESSNA_RECOMMENDED_RESERVE_MINUTES = 45;
+    private final RouteCalculationService routeCalculationService = new RouteCalculationService();
+    private final RecommendationTimeService recommendationTimeService = new RecommendationTimeService();
+    private final SunExposureService sunExposureService = new SunExposureService();
+    private final RouteSimilarityService routeSimilarityService = new RouteSimilarityService(routeCalculationService);
 
     private final RecommendationService recommendationService = new RecommendationService(
             new MockRouteRepository(),
             new MockAirportRepository(),
             new MockAircraftRepository(),
             new MockFuelPriceRepository(),
-            new RouteCalculationService(),
+            routeCalculationService,
             new RouteScoringService(),
-            new RouteCandidateGenerator(new MockWaypointRepository(), new RouteCalculationService()),
+            new RouteCandidateGenerator(
+                    new MockWaypointRepository(),
+                    routeCalculationService,
+                    new RouteCandidateSelectionService(routeSimilarityService)
+            ),
+            recommendationTimeService,
+            new RecommendationSelectionService(routeSimilarityService),
+            new SightseeingService(sunExposureService),
+            sunExposureService,
+            new RouteWeatherSummaryService(),
             new MockWeatherService()
     );
 
