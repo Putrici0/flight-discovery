@@ -33,7 +33,7 @@ class RouteCandidateGeneratorTest {
         assertTrue(routes.stream()
                 .filter(route -> route.waypoints().size() == 1)
                 .allMatch(route -> route.routeType() == RouteType.GENERATED_ONE_WAYPOINT));
-        assertTrue(routes.stream().allMatch(route -> route.waypoints().size() <= 4));
+        assertTrue(routes.stream().allMatch(route -> route.waypoints().size() <= 5));
         assertTrue(routes.stream().anyMatch(route -> route.id().startsWith("generated-corridor-")
                 && route.waypoints().size() > 1));
     }
@@ -164,14 +164,14 @@ class RouteCandidateGeneratorTest {
     }
 
     @Test
-    void threeOrMoreWaypointGenerationCreatesAtMostFortyCandidatesBeforeTimeFiltering() {
+    void threeOrMoreWaypointGenerationKeepsCandidateVolumeBoundedBeforeTimeFiltering() {
         var result = generator.generateWithDebug(MockFlightData.GCLP, 180, 226.0, "coast");
         int compatibleWaypointCount = result.compatibleWaypointCount();
         int maximumGeneratedCandidates = compatibleWaypointCount
                 + compatibleWaypointCount * (compatibleWaypointCount - 1) / 2
-                + 40
-                + 80
-                + 60;
+                + 220
+                + 260
+                + 140;
 
         assertTrue(result.generatedCandidateRoutes() <= maximumGeneratedCandidates);
     }
@@ -234,10 +234,34 @@ class RouteCandidateGeneratorTest {
     }
 
     @Test
-    void limitsGeneratedCandidatesToThirtyRoutes() {
+    void limitsGeneratedCandidatesToEightyRoutes() {
         var routes = generator.generate(MockFlightData.GCLP, 480, 226.0, "panoramic");
 
-        assertTrue(routes.size() <= 30);
+        assertTrue(routes.size() <= 80);
+    }
+
+    @Test
+    void exposesManyGeneratedCandidatesBeforeSelectingDiverseSubset() {
+        var result = generator.generateWithDebug(MockFlightData.GCLP, 180, 226.0, "coast");
+
+        assertTrue(result.generatedCandidateRoutes() > 1000);
+        assertEquals(80, result.routes().size());
+        assertTrue(result.discardedRoutes().stream()
+                .anyMatch(discard -> discard.reason().contains("Too similar")));
+    }
+
+    @Test
+    void selectedGeneratedCandidatesAvoidNearlyIdenticalWaypointSets() {
+        var routes = generator.generate(MockFlightData.GCLP, 180, 226.0, "coast");
+        var signatures = routes.stream()
+                .map(route -> route.waypoints().stream()
+                        .map(waypoint -> waypoint.name().toLowerCase())
+                        .sorted()
+                        .reduce((first, second) -> first + "|" + second)
+                        .orElse(route.id()))
+                .toList();
+
+        assertEquals(signatures.size(), signatures.stream().distinct().count());
     }
 
     @Test

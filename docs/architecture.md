@@ -25,18 +25,18 @@ Capas principales:
 2. `RecommendationService` resuelve aeropuerto, avion, velocidad, consumo y precio de combustible, y coordina servicios especializados sin cambiar el contrato publico.
 3. `RecommendationTimeService` calcula `usefulAvailableTimeMinutes` restando la reserva recomendada del avion y aplicando el margen de seguridad. Este valor funciona como limite operativo y orientacion, no como obligacion de rellenar minutos.
 4. `targetDurationMinutes` es una referencia interna para scoring temporal. Actualmente equivale a `usefulAvailableTimeMinutes * 0.85`, pero la seleccion final puede preferir rutas locales mas cortas cuando tienen mas sentido recreativo.
-5. `RouteCandidateGenerator` crea rutas circulares generadas con 1, 2 y, cuando hay al menos 90 minutos utiles, 3 o mas waypoints visuales compatibles con el aeropuerto.
+5. `RouteCandidateGenerator` crea rutas circulares generadas con 1, 2 y, cuando hay al menos 90 minutos utiles, 3 o mas waypoints visuales compatibles con el aeropuerto. Para rutas multi-waypoint usa conjuntos geograficos por paisaje, rumbo y distancia, y ordena puntos por vecino cercano para evitar zigzags.
 6. Las rutas generadas se filtran por tolerancia maxima de 125% del tiempo util.
 7. Las candidatas se clasifican por bandas de duracion:
    - `short`: 30% - 50%.
    - `medium`: 50% - 75%.
    - `long`: 75% - 100%.
    - `extended`: 100% - 125%.
-8. `RouteCandidateSelectionService` selecciona hasta 30 candidatas buscando variedad de bandas y tipos de ruta. Cuando la preferencia no es interinsular, las rutas locales se ordenan por delante de travesias entre islas.
+8. `RouteCandidateSelectionService` selecciona hasta 80 candidatas buscando variedad de bandas, tipos de ruta y baja similitud entre rutas. Cuando la preferencia no es interinsular, las rutas locales se ordenan por delante de travesias entre islas.
 9. Para cada ruta `RouteWeatherSummaryService` consulta hasta 3 puntos meteorologicos y crea `RouteWeatherSummary`.
 10. `RouteScoringService` calcula `weatherScore`, `timeFitScore`, `preferenceScore`, `scenicScore`, `costScore` y `totalScore`.
 10. `SightseeingService` calcula tiempo de observacion escenica local, maniobras y `flightPath`; `SunExposureService` calcula azimut solar, exposicion y resumen de orientacion.
-10. `RecommendationSelectionService` aplica la seleccion final diversa y devuelve hasta 5 recomendaciones.
+10. `RecommendationSelectionService` aplica la seleccion final diversa, descarta rutas demasiado similares y devuelve hasta 5 recomendaciones.
 11. Las rutas que superan el tiempo util pero no el 125% se permiten con warning.
 
 ## Scoring
@@ -101,8 +101,12 @@ Las rutas demasiado cortas se tratan de forma explicita:
 - 1 waypoint: salida, waypoint visual y regreso.
 - 2 waypoints: salida, primer waypoint, segundo waypoint y regreso.
 - 3 o mas waypoints: disponibles cuando `usefulAvailableTimeMinutes` es al menos 90 minutos, con un limite de candidatos antes del filtrado temporal para contener la combinatoria.
+- Rutas por paisaje: ventanas coherentes de costa, montana, barrancos, pueblos, puntos historicos, bosques, volcanes y vistas panoramicas.
+- Rutas por geometria: conjuntos ordenados por rumbo o distancia desde el aeropuerto, reordenados por vecino cercano para reducir vueltas sobre el mismo tramo.
 
 La generacion usa bandas de duracion para que el conjunto de candidatas no quede sesgado hacia rutas muy cortas. Para cada busqueda intenta conservar rutas `long`, `medium`, `extended` y `short`, y despues rellena con las mejores candidatas restantes. Cuando hay una preferencia como `coast` o `mountain`, reserva la mayoria de las candidatas para rutas que coinciden con la preferencia, pero mantiene alternativas para diversidad.
+
+Antes de que las candidatas lleguen al scoring, `RouteCandidateSelectionService` evita llenar el cupo con rutas casi iguales. `RouteSimilarityService` compara rutas por waypoints compartidos, waypoints cercanos y geometria aproximada. La seleccion final usa la misma metrica para evitar rutas practicamente identicas en el top 5. Los descartes por similitud aparecen en debug como `FINAL_SIMILARITY_FILTER` o con motivo `Too similar to a selected generated candidate`.
 
 Para rutas interinsulares desde GCLP, el catalogo mock permite usar puntos de Tenerife como referencias visuales adicionales cuando la preferencia es `inter-island` o `cross-country`. La intencion es proponer rutas recreativas con puntos cercanos de ambas islas, sin convertir esos puntos en autorizaciones operacionales.
 
@@ -119,6 +123,7 @@ La API externa no cambia, pero la logica interna se divide en responsabilidades 
 - `RecommendationSelectionService`: seleccion final, diversidad de waypoints/tipos/tags y prioridad local frente a interinsular.
 - `RouteCandidateGenerator`: crea rutas dinamicas y descarta las que no caben en tiempo.
 - `RouteCandidateSelectionService`: limita candidatas generadas por preferencia, banda de duracion y tipo de ruta.
+- `RouteSimilarityService`: similitud por waypoints compartidos, proximidad geografica y geometria aproximada.
 - `SightseeingService`: tiempo de observacion, orbitas escenicas y `flightPath`.
 - `SunExposureService`: azimut solar aproximado, puntuacion de exposicion y resumen textual.
 - `RouteWeatherSummaryService`: puntos meteorologicos por ruta, fallback y agregado multipunto.
@@ -137,7 +142,7 @@ La API externa no cambia, pero la logica interna se divide en responsabilidades 
 - Waypoints compatibles.
 - Numero total de candidatas generadas.
 - Candidatas evaluadas con scores y motivos de descarte.
-- Descartes por generacion, filtro temporal y seleccion final.
+- Descartes por generacion, filtro temporal, similitud y seleccion final.
 - Recomendaciones finales.
 
 ## Frontend

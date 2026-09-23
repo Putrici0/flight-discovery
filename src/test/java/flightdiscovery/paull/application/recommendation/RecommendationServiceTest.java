@@ -14,6 +14,8 @@ import flightdiscovery.paull.api.recommendation.RecommendationRequest;
 import flightdiscovery.paull.api.recommendation.RecommendedRouteResponse;
 import flightdiscovery.paull.api.recommendation.RouteDurationCategory;
 import flightdiscovery.paull.domain.calculation.RouteCalculationService;
+import flightdiscovery.paull.domain.mock.MockFlightData;
+import flightdiscovery.paull.domain.model.FlightRoute;
 import flightdiscovery.paull.domain.model.RouteType;
 import flightdiscovery.paull.domain.repository.MockAircraftRepository;
 import flightdiscovery.paull.domain.repository.MockAirportRepository;
@@ -263,15 +265,14 @@ class RecommendationServiceTest {
     void allowsRoutesUpToTwentyFivePercentOverUsefulTimeWithWarning() {
         double usefulFlightTimeMinutes = 8.5;
         var recommendations = recommendationService.recommend(requestWithSafetyMargin(55, 15))
-                .recommendations()
-                .stream()
+                .recommendations();
+        var slightlyOverTimeRecommendations = recommendations.stream()
                 .filter(recommendation -> recommendation.estimatedTimeMinutes() > usefulFlightTimeMinutes)
                 .toList();
 
-        assertTrue(recommendations.size() > 0);
         assertTrue(recommendations.stream()
                 .allMatch(recommendation -> recommendation.estimatedTimeMinutes() <= usefulFlightTimeMinutes * 1.25));
-        assertTrue(recommendations.stream()
+        assertTrue(slightlyOverTimeRecommendations.stream()
                 .allMatch(recommendation -> recommendation.warnings().contains("Esta ruta supera ligeramente el tiempo disponible")));
     }
 
@@ -463,13 +464,11 @@ class RecommendationServiceTest {
 
     @Test
     void routeWarningsMentionSlightTimeOverrun() {
-        var recommendations = recommendationService.recommend(requestWithSafetyMargin(55, 15))
-                .recommendations()
-                .stream()
-                .filter(recommendation -> recommendation.warnings().contains("Esta ruta supera ligeramente el tiempo disponible"))
-                .toList();
+        var response = recommendationService.recommend(requestWithSafetyMargin(55, 15));
 
-        assertTrue(recommendations.size() > 0);
+        assertTrue(response.recommendations().stream()
+                .filter(recommendation -> recommendation.estimatedTimeMinutes() > 8.5)
+                .allMatch(recommendation -> recommendation.warnings().contains("Esta ruta supera ligeramente el tiempo disponible")));
     }
 
     @Test
@@ -627,6 +626,23 @@ class RecommendationServiceTest {
         var recommendations = recommendationService.recommend(requestWithAvailableTime(120)).recommendations();
 
         assertFalse(recommendations.stream().allMatch(recommendation -> recommendation.id().contains("coast")));
+    }
+
+    @Test
+    void topRecommendationsRemainDiverseForCommonGclpSearches() {
+        assertDiverseTopRecommendations(recommendationService.recommend(requestWithPreferenceAndUsefulTime("coast", 120)).recommendations());
+        assertDiverseTopRecommendations(recommendationService.recommend(requestWithPreferenceAndUsefulTime("mountain", 180)).recommendations());
+        assertDiverseTopRecommendations(recommendationService.recommend(requestWithPreferenceAndUsefulTime("short", 75)).recommendations());
+    }
+
+    @Test
+    void debugReportsCandidatesDiscardedBySimilarity() {
+        var debug = recommendationService.debug(requestWithPreferenceAndUsefulTime("coast", 180));
+
+        assertTrue(debug.generatedCandidateRoutes() > 1000);
+        assertTrue(debug.discards().stream()
+                .anyMatch(discard -> discard.stage().equals("FINAL_SIMILARITY_FILTER")
+                        || discard.reason().contains("Too similar")));
     }
 
     private RecommendationRequest requestWithAvailableTime(int availableTimeMinutes) {
@@ -808,6 +824,43 @@ class RecommendationServiceTest {
                         .map(second -> new RoutePair(first, second)))
                 .findFirst()
                 .orElseThrow();
+    }
+
+    private void assertDiverseTopRecommendations(List<RecommendedRouteResponse> recommendations) {
+        assertFalse(recommendations.isEmpty());
+        var signatures = recommendations.stream()
+                .map(recommendation -> recommendation.waypoints().stream()
+                        .map(waypoint -> waypoint.name().toLowerCase())
+                        .sorted()
+                        .reduce((first, second) -> first + "|" + second)
+                        .orElse(recommendation.id()))
+                .toList();
+
+        assertEquals(signatures.size(), signatures.stream().distinct().count());
+
+        for (int i = 0; i < recommendations.size(); i++) {
+            for (int j = i + 1; j < recommendations.size(); j++) {
+                assertTrue(routeSimilarityService.similarity(
+                        toRoute(recommendations.get(i)),
+                        toRoute(recommendations.get(j))
+                ) < 0.62);
+            }
+        }
+    }
+
+    private FlightRoute toRoute(RecommendedRouteResponse recommendation) {
+        return new FlightRoute(
+                recommendation.id(),
+                recommendation.name(),
+                recommendation.description(),
+                recommendation.routeType(),
+                MockFlightData.GCLP,
+                recommendation.waypoints(),
+                List.of(),
+                recommendation.approximateDistanceKm(),
+                recommendation.estimatedTimeMinutes(),
+                recommendation.scoreBreakdown().scenicScore()
+        );
     }
 
     private boolean isInterIslandRecommendation(RecommendedRouteResponse recommendation) {

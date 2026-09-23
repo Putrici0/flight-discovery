@@ -246,7 +246,7 @@ Campos destacados:
 - `weatherLookupPoints`: puntos de salida/intermedios usados para el resumen meteorologico multi-punto.
 - `fuelTypeUsed`, `fuelPriceUsed`, `fuelPriceSource`, `fuelPriceIsMock`, `fuelPriceAirportCode`: diagnostico del precio final usado para estimar coste.
 - `candidates`: candidatas evaluadas y descartadas, con `totalScore`, `timeFitScore`, `costScore`, fase de descarte y motivo cuando aplica.
-- `discards`: descartes por generacion, filtro de tiempo o seleccion final.
+- `discards`: descartes por generacion, filtro de tiempo, similitud o seleccion final.
 - `recommendations`: recomendaciones finales.
 
 ## Calculos Actuales
@@ -263,14 +263,16 @@ Campos destacados:
 - Coste: combustible estimado * precio por litro.
 - `usefulAvailableTimeMinutes`: tiempo disponible menos reserva recomendada del avion y margen de seguridad.
 - `targetDurationMinutes`: referencia interna para `timeFitScore`. Se calcula como `usefulAvailableTimeMinutes * 0.85`, pero la seleccion final puede preferir rutas locales mas cortas si son recreativamente mas coherentes.
-- Generacion dinamica: se crean rutas circulares con 1, 2 y, cuando hay al menos 90 minutos utiles, 3 o mas waypoints visuales compatibles con el aeropuerto de salida.
+- Generacion dinamica: se crean muchas rutas circulares razonables con 1, 2 y, cuando hay al menos 90 minutos utiles, 3 o mas waypoints visuales compatibles con el aeropuerto de salida.
+- Coherencia geografica: las rutas generadas usan agrupaciones por paisaje y rumbo, ordenacion por vecino cercano y filtros de desvio para evitar zigzags, waypoints casi duplicados y grandes rodeos por puntos de poco valor.
 - Rutas entre islas: el catalogo mock incluye mas puntos de ambas islas para que una travesia pueda proponer referencias visuales cercanas durante el camino, no solo un salto directo.
 - Bandas de duracion para candidatas generadas:
   - `short`: 30% a 50% del tiempo util.
   - `medium`: 50% a 75%.
   - `long`: 75% a 100%.
   - `extended`: 100% a 125%, permitidas con warning.
-- Generacion por bandas: el generador intenta conservar candidatas `long`, `medium`, `extended` y `short` para evitar que la seleccion quede dominada por rutas muy cortas. Tambien mantiene variedad de tipos de ruta.
+- Generacion por bandas: el generador intenta conservar candidatas `long`, `medium`, `extended` y `short` para evitar que la seleccion quede dominada por rutas muy cortas. Tambien mantiene variedad de tipos de ruta y puede pasar hasta 80 candidatas diversas a scoring.
+- Diversidad por similitud: antes de seleccionar el top final se penalizan rutas demasiado parecidas segun waypoints compartidos y cercania geografica aproximada entre puntos. El debug marca descartes por similitud.
 - Meteorologia por ruta recomendada: ademas del valor meteorologico representativo usado por el scoring, se calcula `routeWeatherSummary` consultando hasta 3 puntos: aeropuerto de salida, primer waypoint como waypoint principal y ultimo waypoint antes de volver. Si hay waypoints repetidos o menos puntos disponibles, se reducen las consultas.
 - `routeWeatherSummary`: agrega viento medio y maximo, nubosidad media, probabilidad maxima de precipitacion, visibilidad minima, temperatura media, `weatherScore`, `provider` e `isMock`.
 - `weatherScore`: se calcula desde el resumen de ruta multi-punto. Penaliza viento alto, precipitacion alta, nubosidad muy alta y visibilidad baja, y siempre se limita a 0-100.
@@ -303,7 +305,7 @@ No hay base de datos ni integraciones externas reales todavia.
 - Sin restricciones reales de espacio aereo.
 - Sin validacion aeronautica profesional.
 - Sin navegacion ni planificacion operacional.
-- Catalogo pequeño de aeropuertos, aviones, rutas y waypoints visuales.
+- Catalogo pequeno de aeropuertos, aviones y rutas predefinidas. El catalogo mock de waypoints visuales de Gran Canaria es mas amplio para generar variedad desde GCLP, pero sigue siendo orientativo.
 - Meteorologia mock por defecto; Open-Meteo es opcional y no debe usarse como fuente aeronautica operacional. Precios por aeropuerto simulados/mock salvo precio manual del usuario.
 
 ## METAR/TAF Futuro

@@ -166,16 +166,26 @@ public class RouteCandidateSelectionService {
             return;
         }
 
-        if (isTooSimilarToSelected(replacement, selectedRoutes)) {
-            return;
-        }
-
         if (selectedRoutes.size() < MAX_GENERATED_ROUTES) {
             selectedRoutes.add(replacement);
             return;
         }
-        selectedRoutes.removeLast();
+        selectedRoutes.remove(replacementIndex(selectedRoutes));
         selectedRoutes.add(replacement);
+    }
+
+    private int replacementIndex(List<GeneratedRouteCandidate> selectedRoutes) {
+        for (int index = selectedRoutes.size() - 1; index >= 0; index--) {
+            RouteType routeType = selectedRoutes.get(index).route().routeType();
+            long routeTypeCount = selectedRoutes.stream()
+                    .filter(candidate -> candidate.route().routeType() == routeType)
+                    .count();
+            if (routeTypeCount > 1) {
+                return index;
+            }
+        }
+
+        return selectedRoutes.size() - 1;
     }
 
     private void addBandRoutes(

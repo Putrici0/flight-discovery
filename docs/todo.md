@@ -2,19 +2,21 @@
 
 ## Backend
 
-- Anadir tests de regresion para rankings representativos por preferencia y tiempo disponible.
+- Seguir ampliando tests de regresion para rankings representativos por preferencia, tiempo disponible y aeropuerto.
 - Exponer en la respuesta, si hace falta en frontend, la banda de duracion de cada ruta.
 - Revisar si `extended` debe tener un warning especifico distinto de "supera ligeramente el tiempo disponible".
 - Parametrizar pesos de scoring y cuotas de bandas cuando haya mas datos.
-- Mejorar logging para diferenciar descartes por tiempo, limite de candidatas, seleccion final, fallback weather y cache weather.
+- Mejorar logging para diferenciar descartes por tiempo, similitud, limite de candidatas, seleccion final, fallback weather y cache weather.
 - Modelar variantes de ruta locales mas ricas: vuelta parcial/completa a isla, tramos panoramicos lentos y limites configurables de observacion escenica.
+- Ajustar umbrales de similitud con datos reales y feedback de uso.
 
 ## Datos y Fuentes
 
 - Ampliar aeropuertos mock.
 - Ampliar aviones mock con mas tipos de combustible y perfiles realistas.
-- Ampliar waypoints visuales por aeropuerto.
-- Mejorar la seleccion de puntos cercanos al camino: detectar waypoints dentro de un corredor de ruta, insertarlos si aportan valor visual y limitar el desvio/tiempo adicional.
+- Ampliar waypoints visuales por aeropuerto fuera de GCLP.
+- Seguir validando el catalogo mock ampliado de Gran Canaria con fuentes geograficas y feedback de pilotos locales.
+- Mejorar la seleccion de puntos cercanos al camino con corredores geoespaciales reales cuando haya persistencia geoespacial.
 - Validar Open-Meteo contra respuestas reales y documentar limites horarios.
 - Integrar METAR/TAF en una fase posterior mediante AviationWeather: METAR/TAF del aeropuerto de salida y de aeropuertos cercanos o alternativos.
 - Evaluar OpenAIP para espacio aereo.
