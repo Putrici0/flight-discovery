@@ -63,6 +63,13 @@ El frontend incluye un selector `Meteorologia`:
 - `Open-Meteo real orientativa`: envia `weatherProvider=open-meteo` en la request y usa datos reales orientativos cuando la API responde.
 - `Simulada/mock`: envia `weatherProvider=mock` para desarrollo, demos sin red o fallback controlado.
 
+Ademas, el backend consulta METAR/TAF mediante AviationWeather.gov para mostrar informacion aeronautica aeroportuaria separada:
+
+- METAR: observacion real reciente del aeropuerto de salida y, cuando aplica, aeropuertos mock cercanos/relevantes para la ruta.
+- TAF: pronostico aeroportuario cuando existe; aeropuertos sin TAF se muestran como tal.
+- Esta informacion no entra en `weatherScore` ni sustituye un briefing o herramienta oficial de planificacion.
+- Si AviationWeather.gov falla o no devuelve datos, la recomendacion sigue generandose y se muestran warnings.
+
 ## Ejecutar Frontend
 
 ```bash
@@ -234,6 +241,33 @@ Respuesta resumida:
         "provider": "mock",
         "isMock": true
       },
+      "aviationWeather": {
+        "provider": "AviationWeather.gov",
+        "sourceUrl": "https://aviationweather.gov/data/api/",
+        "operationalUseAllowed": false,
+        "airports": [
+          {
+            "airportCode": "GCLP",
+            "airportName": "Gran Canaria",
+            "distanceFromRouteKm": 0.0,
+            "metar": {
+              "rawText": "METAR GCLP 271130Z 02006KT 9999 FEW025 26/23 Q1018",
+              "observedAt": "2026-09-27T11:30:00Z",
+              "ageMinutes": 30,
+              "flightCategory": "VFR",
+              "windSpeedKt": 6
+            },
+            "tafAvailable": true,
+            "taf": {
+              "rawText": "TAF GCLP 271000Z 2710/2809 04004KT CAVOK",
+              "issuedAt": "2026-09-27T10:00:00Z",
+              "ageMinutes": 120
+            },
+            "warnings": []
+          }
+        ],
+        "warnings": []
+      },
       "scoreBreakdown": {
         "weatherScore": 80.0,
         "timeFitScore": 100.0,
@@ -253,19 +287,22 @@ Respuesta resumida:
   "debugInfo": {
     "generatedCandidateRoutes": 210,
     "discardedByTimeRoutes": 0,
-    "recommendedRoutes": 5
+    "recommendedRoutes": 5,
+    "aviationWeatherAirports": 5,
+    "aviationWeatherWarnings": 0
   }
 }
 ```
 
 ### POST /api/recommendations/debug
 
-Endpoint de diagnostico para desarrollo. Devuelve la request recibida, `plannedDepartureDateTime`, proveedor meteorologico usado, puntos consultados para weather, avion resuelto, fuel usado, precio usado, origen del precio, tiempo util disponible, objetivo temporal, numero de waypoints compatibles, candidatas generadas, descartes, candidatas puntuadas y recomendaciones finales.
+Endpoint de diagnostico para desarrollo. Devuelve la request recibida, `plannedDepartureDateTime`, proveedor meteorologico usado, puntos consultados para weather, resumenes METAR/TAF consultados, avion resuelto, fuel usado, precio usado, origen del precio, tiempo util disponible, objetivo temporal, numero de waypoints compatibles, candidatas generadas, descartes, candidatas puntuadas y recomendaciones finales.
 
 Campos destacados:
 
 - `usefulAvailableTimeMinutes`: tiempo disponible despues de reserva y margen de seguridad. Es la base para decidir si una ruta cabe y para orientar el encaje temporal sin forzar duraciones artificiales.
 - `weatherLookupPoints`: puntos de salida/intermedios usados para el resumen meteorologico multi-punto.
+- `aviationWeatherSummaries`: METAR/TAF por recomendacion, con aeropuertos consultados, raw text, campos estructurados, edad del dato y warnings.
 - `fuelTypeUsed`, `fuelPriceUsed`, `fuelPriceSource`, `fuelPriceIsMock`, `fuelPriceAirportCode`: diagnostico del precio final usado para estimar coste.
 - `candidates`: candidatas evaluadas y descartadas, con `totalScore`, `timeFitScore`, `costScore`, fase de descarte y motivo cuando aplica.
 - `discards`: descartes por generacion, filtro de tiempo, similitud o seleccion final.
@@ -301,6 +338,7 @@ Campos destacados:
 - Meteorologia por ruta recomendada: ademas del valor meteorologico representativo usado por el scoring, se calcula `routeWeatherSummary` consultando hasta 3 puntos: aeropuerto de salida, primer waypoint como waypoint principal y ultimo waypoint antes de volver. Si hay waypoints repetidos o menos puntos disponibles, se reducen las consultas.
 - `routeWeatherSummary`: agrega viento medio y maximo, nubosidad media, probabilidad maxima de precipitacion, visibilidad minima, temperatura media, `weatherScore`, `provider` e `isMock`.
 - `weatherScore`: se calcula desde el resumen de ruta multi-punto. Penaliza viento alto, precipitacion alta, nubosidad muy alta y visibilidad baja, y siempre se limita a 0-100.
+- METAR/TAF: se consulta mediante AviationWeather.gov para aeropuerto de salida y aeropuertos cercanos/relevantes. Se muestra como informacion aeronautica separada con cache, raw text, estructura util y edad del dato. No modifica `weatherScore`.
 - Scoring: combina `weatherScore`, `timeFitScore`, `preferenceScore`, interes visual, calidad visual/orientacion y coste. Las rutas `inter-island` reciben una penalizacion por defecto salvo preferencia explicita.
 - `timeFitScore`: puntua mejor las rutas cercanas a `targetDurationMinutes`, permite rutas hasta el 125% del tiempo util y descarta el encaje temporal por encima de ese margen.
 - Penalizacion de rutas demasiado cortas: si `preference` no es `short`, las rutas por debajo del 40% del tiempo util penalizan mucho y las de 40%-60% penalizan moderadamente. Si `preference` es `short`, esas rutas no se penalizan por duracion.
@@ -320,22 +358,19 @@ El MVP usa datos mock en memoria para:
 - precios de combustible
 - precios mock por aeropuerto y tipo de combustible (`GCLP`, `GCTS`, `GCXO`; `AVGAS_100LL`, `JET_A1`, `MOGAS`)
 - meteorologia simulada por defecto; opcionalmente Open-Meteo con `weather.provider=open-meteo`
+- METAR/TAF real via AviationWeather.gov para aeropuertos soportados por la fuente
 
-No hay base de datos ni integraciones externas reales todavia.
+No hay base de datos. Las integraciones externas actuales son Open-Meteo y AviationWeather.gov.
 
 ## Limitaciones Actuales
 
-- Sin METAR/TAF reales, OpenAIP ni PostGIS.
+- Sin OpenAIP ni PostGIS.
 - Sin persistencia.
 - Sin restricciones reales de espacio aereo.
 - Sin validacion aeronautica profesional.
 - Sin navegacion ni planificacion operacional.
 - Catalogo pequeno de aeropuertos, aviones y rutas predefinidas. El catalogo mock de waypoints visuales de Gran Canaria es mas amplio para generar variedad desde GCLP, pero sigue siendo orientativo.
-- Meteorologia mock por defecto; Open-Meteo es opcional y no debe usarse como fuente aeronautica operacional. Precios por aeropuerto simulados/mock salvo precio manual del usuario.
-
-## METAR/TAF Futuro
-
-METAR/TAF queda solo en roadmap. En una fase posterior se evaluara AviationWeather para obtener METAR del aeropuerto de salida, TAF del aeropuerto de salida si existe y METAR/TAF de aeropuertos cercanos o alternativos. No hay integracion METAR/TAF implementada en este MVP.
+- Meteorologia mock por defecto; Open-Meteo es opcional y no debe usarse como fuente aeronautica operacional. METAR/TAF se muestra como informacion aeroportuaria, pero Flight Discovery no es una herramienta oficial de planificacion. Precios por aeropuerto simulados/mock salvo precio manual del usuario.
 
 ## Proximos Pasos
 

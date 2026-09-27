@@ -3,6 +3,7 @@ package flightdiscovery.paull.api.recommendation;
 import java.util.List;
 
 import flightdiscovery.paull.domain.model.RouteScore;
+import flightdiscovery.paull.domain.model.RouteAviationWeatherSummary;
 import flightdiscovery.paull.domain.model.RouteLegOrientation;
 import flightdiscovery.paull.domain.model.RouteType;
 import flightdiscovery.paull.domain.model.RouteWeatherSummary;
@@ -50,6 +51,7 @@ public record RecommendedRouteResponse(
         double visibilityKm,
         double temperatureCelsius,
         RouteWeatherSummary routeWeatherSummary,
+        RouteAviationWeatherSummary aviationWeather,
         RouteScore scoreBreakdown,
         String explanation,
         List<String> warnings

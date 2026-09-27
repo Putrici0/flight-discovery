@@ -76,6 +76,7 @@ export interface RecommendedRoute {
   visibilityKm?: number;
   temperatureCelsius?: number;
   routeWeatherSummary?: RouteWeatherSummary;
+  aviationWeather?: RouteAviationWeatherSummary;
   scoreBreakdown: {
     weatherScore: number;
     timeFitScore: number;
@@ -118,6 +119,79 @@ export interface RouteWeatherSummary {
   isMock: boolean;
 }
 
+export interface RouteAviationWeatherSummary {
+  provider: string;
+  sourceUrl: string;
+  operationalUseAllowed: boolean;
+  airports: AirportAviationWeather[];
+  warnings: string[];
+}
+
+export interface AirportAviationWeather {
+  airportCode: string;
+  airportName: string;
+  latitude: number;
+  longitude: number;
+  distanceFromRouteKm: number;
+  metar?: MetarReport | null;
+  taf?: TafReport | null;
+  tafAvailable: boolean;
+  warnings: string[];
+}
+
+export interface MetarReport {
+  airportCode: string;
+  stationName?: string;
+  rawText: string;
+  observedAt?: string;
+  receivedAt?: string;
+  ageMinutes?: number;
+  flightCategory?: string;
+  windDirectionDegrees?: number | string;
+  windSpeedKt?: number;
+  windGustKt?: number;
+  visibilityStatuteMiles?: string;
+  altimeterHpa?: number;
+  temperatureCelsius?: number;
+  dewpointCelsius?: number;
+  weather?: string;
+  clouds: AviationCloudLayer[];
+  source: string;
+}
+
+export interface TafReport {
+  airportCode: string;
+  stationName?: string;
+  rawText: string;
+  issuedAt?: string;
+  bulletinAt?: string;
+  validFrom?: string;
+  validTo?: string;
+  ageMinutes?: number;
+  forecastPeriods: TafForecastPeriod[];
+  source: string;
+}
+
+export interface TafForecastPeriod {
+  from?: string;
+  to?: string;
+  becomingAt?: string;
+  change?: string;
+  probability?: number;
+  windDirectionDegrees?: number | string;
+  windSpeedKt?: number;
+  windGustKt?: number;
+  visibilityStatuteMiles?: string;
+  weather?: string;
+  clouds: AviationCloudLayer[];
+}
+
+export interface AviationCloudLayer {
+  cover?: string;
+  baseFeet?: number;
+  type?: string;
+}
+
 export interface SightseeingManeuver {
   waypointName: string;
   maneuverType: string;
@@ -139,6 +213,8 @@ export interface RecommendationDebugInfo {
   generatedCandidateRoutes: number;
   discardedByTimeRoutes: number;
   recommendedRoutes: number;
+  aviationWeatherAirports?: number;
+  aviationWeatherWarnings?: number;
 }
 
 @Injectable({ providedIn: 'root' })

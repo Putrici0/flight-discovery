@@ -247,6 +247,39 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     return route.weatherIsMock ? 'mock' : (route.weatherProvider ?? 'open-meteo');
   }
 
+  protected aviationWeatherAgeText(ageMinutes?: number): string {
+    if (ageMinutes === undefined || ageMinutes === null) {
+      return 'edad no disponible';
+    }
+
+    if (ageMinutes < 60) {
+      return `${ageMinutes} min`;
+    }
+
+    return `${Math.floor(ageMinutes / 60)} h ${ageMinutes % 60} min`;
+  }
+
+  protected aviationWindText(windDirectionDegrees?: number | string, windSpeedKt?: number, windGustKt?: number): string {
+    if (windSpeedKt === undefined || windSpeedKt === null) {
+      return 'sin viento decodificado';
+    }
+
+    const direction = windDirectionDegrees === undefined || windDirectionDegrees === null ? 'VRB' : windDirectionDegrees;
+    const gust = windGustKt === undefined || windGustKt === null ? '' : ` G${windGustKt}`;
+
+    return `${direction}/${windSpeedKt}${gust} kt`;
+  }
+
+  protected cloudLayersText(clouds?: { cover?: string; baseFeet?: number; type?: string }[]): string {
+    if (!clouds?.length) {
+      return 'Sin capas';
+    }
+
+    return clouds
+      .map((cloud) => [cloud.cover, cloud.baseFeet ? `${cloud.baseFeet} ft` : undefined, cloud.type].filter(Boolean).join(' '))
+      .join(', ');
+  }
+
   protected sideLabel(side?: string): string {
     switch (side) {
       case 'LEFT':

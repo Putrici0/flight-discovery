@@ -380,6 +380,56 @@
             </div>
           </dl>
 
+          <h4>Meteorologia aeronautica METAR/TAF</h4>
+          <p class="aviation-weather-note">
+            Fuente: {{ route.aviationWeather?.provider ?? 'AviationWeather.gov' }}. Informacion informativa, no apta como briefing oficial.
+          </p>
+          <div class="aviation-weather" *ngIf="route.aviationWeather?.airports?.length; else noAviationWeather">
+            <section class="aviation-airport" *ngFor="let airport of route.aviationWeather?.airports ?? []">
+              <header>
+                <strong>{{ airport.airportCode }}</strong>
+                <span>{{ airport.airportName }} - {{ airport.distanceFromRouteKm | number:'1.0-0' }} km de la ruta</span>
+              </header>
+              <dl>
+                <div>
+                  <dt>METAR</dt>
+                  <dd>{{ airport.metar?.rawText ?? 'Sin METAR reciente' }}</dd>
+                </div>
+                <div>
+                  <dt>Edad METAR</dt>
+                  <dd>{{ aviationWeatherAgeText(airport.metar?.ageMinutes) }}</dd>
+                </div>
+                <div>
+                  <dt>Categoria</dt>
+                  <dd>{{ airport.metar?.flightCategory ?? 'n/d' }}</dd>
+                </div>
+                <div>
+                  <dt>Viento METAR</dt>
+                  <dd>{{ aviationWindText(airport.metar?.windDirectionDegrees, airport.metar?.windSpeedKt, airport.metar?.windGustKt) }}</dd>
+                </div>
+                <div>
+                  <dt>Visibilidad</dt>
+                  <dd>{{ airport.metar?.visibilityStatuteMiles ?? 'n/d' }} SM</dd>
+                </div>
+                <div>
+                  <dt>Nubes</dt>
+                  <dd>{{ cloudLayersText(airport.metar?.clouds) }}</dd>
+                </div>
+              </dl>
+              <div class="taf-block">
+                <strong>TAF</strong>
+                <p>{{ airport.taf?.rawText ?? 'Sin TAF disponible para este aeropuerto' }}</p>
+                <span *ngIf="airport.taf">Emitido hace {{ aviationWeatherAgeText(airport.taf.ageMinutes) }} - valido {{ airport.taf.validFrom }} - {{ airport.taf.validTo }}</span>
+              </div>
+              <ul class="aviation-weather-warnings" *ngIf="airport.warnings?.length">
+                <li *ngFor="let warning of airport.warnings ?? []">{{ warning }}</li>
+              </ul>
+            </section>
+          </div>
+          <ng-template #noAviationWeather>
+            <p class="aviation-weather-note">No se recibieron datos METAR/TAF, pero la recomendacion sigue disponible.</p>
+          </ng-template>
+
           <div class="warnings" *ngIf="route.warnings?.length">
             <h4>Warnings</h4>
             <ul>
@@ -553,6 +603,16 @@
               <dd>{{ (route.routeWeatherSummary?.averageTemperatureCelsius ?? route.temperatureCelsius ?? 0) | number:'1.0-0' }} C</dd>
             </div>
           </dl>
+          <div class="aviation-weather compact" *ngIf="route.aviationWeather?.airports?.length">
+            <section class="aviation-airport" *ngFor="let airport of route.aviationWeather?.airports ?? []">
+              <header>
+                <strong>{{ airport.airportCode }}</strong>
+                <span>{{ airport.metar?.flightCategory ?? 'METAR' }} - {{ aviationWeatherAgeText(airport.metar?.ageMinutes) }}</span>
+              </header>
+              <p>{{ airport.metar?.rawText ?? 'Sin METAR reciente' }}</p>
+              <p>{{ airport.taf?.rawText ?? 'Sin TAF disponible' }}</p>
+            </section>
+          </div>
           <ul class="route-warnings" *ngIf="route.warnings?.length">
             <li *ngFor="let warning of route.warnings ?? []">{{ warning }}</li>
           </ul>
@@ -573,6 +633,14 @@
             <div>
               <dt>Rutas finalmente recomendadas</dt>
               <dd>{{ debugInfo.recommendedRoutes }}</dd>
+            </div>
+            <div>
+              <dt>Aeropuertos METAR/TAF</dt>
+              <dd>{{ debugInfo.aviationWeatherAirports ?? 0 }}</dd>
+            </div>
+            <div>
+              <dt>Avisos METAR/TAF</dt>
+              <dd>{{ debugInfo.aviationWeatherWarnings ?? 0 }}</dd>
             </div>
           </dl>
         </aside>

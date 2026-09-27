@@ -28,6 +28,7 @@ import flightdiscovery.paull.domain.model.FuelPrice;
 import flightdiscovery.paull.domain.model.FuelPriceSource;
 import flightdiscovery.paull.domain.model.RouteScore;
 import flightdiscovery.paull.domain.model.RouteOrientationAnalysis;
+import flightdiscovery.paull.domain.model.RouteAviationWeatherSummary;
 import flightdiscovery.paull.domain.model.RouteWeatherSummary;
 import flightdiscovery.paull.domain.model.WeatherData;
 import flightdiscovery.paull.domain.model.Waypoint;
@@ -63,6 +64,7 @@ public class RecommendationService {
     private final SightseeingService sightseeingService;
     private final SunExposureService sunExposureService;
     private final RouteWeatherSummaryService routeWeatherSummaryService;
+    private final RouteAviationWeatherService routeAviationWeatherService;
     private final WeatherService weatherService;
 
     public RecommendationService(
@@ -78,6 +80,7 @@ public class RecommendationService {
             SightseeingService sightseeingService,
             SunExposureService sunExposureService,
             RouteWeatherSummaryService routeWeatherSummaryService,
+            RouteAviationWeatherService routeAviationWeatherService,
             WeatherService weatherService
     ) {
         this.routeRepository = routeRepository;
@@ -92,6 +95,7 @@ public class RecommendationService {
         this.sightseeingService = sightseeingService;
         this.sunExposureService = sunExposureService;
         this.routeWeatherSummaryService = routeWeatherSummaryService;
+        this.routeAviationWeatherService = routeAviationWeatherService;
         this.weatherService = weatherService;
     }
 
@@ -101,7 +105,9 @@ public class RecommendationService {
         RecommendationDebugInfo debugInfo = new RecommendationDebugInfo(
                 run.generationResult().generatedCandidateRoutes(),
                 run.generationResult().discardedByTimeRoutes() + scoredRoutesDiscardedByTime,
-                run.viableRecommendations().size()
+                run.viableRecommendations().size(),
+                aviationWeatherAirportCount(run.viableRecommendations()),
+                aviationWeatherWarningCount(run.viableRecommendations())
         );
 
         return new RecommendationResponse(run.viableRecommendations(), warnings(run.viableRecommendations()), debugInfo);
@@ -163,6 +169,9 @@ public class RecommendationService {
                 run.viableScoredRoutes().stream()
                         .flatMap(scoredRoute -> routeWeatherSummaryService.routeWeatherPoints(scoredRoute.route(), run.departureAirport()).stream())
                         .distinct()
+                        .toList(),
+                run.viableRecommendations().stream()
+                        .map(RecommendedRouteResponse::aviationWeather)
                         .toList(),
                 run.fuelPrice().fuelType(),
                 run.fuelPrice().pricePerLiter(),
@@ -348,6 +357,7 @@ public class RecommendationService {
                 fallbackWeatherData,
                 activeWeatherService
         );
+        RouteAviationWeatherSummary aviationWeather = routeAviationWeatherService.aviationWeatherSummary(route, departureAirport);
         WeatherData weatherData = new WeatherData(
                 routeWeatherSummary.averageWindKmh(),
                 routeWeatherSummary.averageCloudCoverPercent(),
@@ -420,10 +430,27 @@ public class RecommendationService {
                 weatherData.visibilityKm(),
                 weatherData.temperatureCelsius(),
                 routeWeatherSummary,
+                aviationWeather,
                 score,
                 explanation(route, request, usefulFlightTimeMinutes, estimatedTimeMinutes, sightseeingTimeMinutes, estimatedFuelLiters, estimatedCost, score, weatherData, orientationAnalysis),
                 routeWarnings(estimatedTimeMinutes, usefulFlightTimeMinutes, estimatedCost, weatherData)
         );
+    }
+
+    private int aviationWeatherAirportCount(List<RecommendedRouteResponse> recommendations) {
+        return recommendations.stream()
+                .map(RecommendedRouteResponse::aviationWeather)
+                .filter(summary -> summary != null && summary.airports() != null)
+                .mapToInt(summary -> summary.airports().size())
+                .sum();
+    }
+
+    private int aviationWeatherWarningCount(List<RecommendedRouteResponse> recommendations) {
+        return recommendations.stream()
+                .map(RecommendedRouteResponse::aviationWeather)
+                .filter(summary -> summary != null && summary.warnings() != null)
+                .mapToInt(summary -> summary.warnings().size())
+                .sum();
     }
 
     private Waypoint airportWaypoint(Airport airport) {

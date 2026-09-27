@@ -7,6 +7,7 @@
 - Revisar si `extended` debe tener un warning especifico distinto de "supera ligeramente el tiempo disponible".
 - Parametrizar pesos de scoring y cuotas de bandas cuando haya mas datos.
 - Mejorar logging para diferenciar descartes por tiempo, similitud, limite de candidatas, seleccion final, fallback weather y cache weather.
+- Mejorar observabilidad de AviationWeather.gov: cache hits/misses, latencia, ratios de sin METAR/sin TAF y fallos por aeropuerto.
 - Modelar variantes de ruta locales mas ricas: vuelta parcial/completa a isla, tramos panoramicos lentos y limites configurables de observacion escenica.
 - Afinar `preferredViewingBearingDegrees` de `VisualWaypoint` con datos costeros/orograficos reales para mejorar la recomendacion de lado de vistas.
 - Ajustar umbrales de similitud con datos reales y feedback de uso.
@@ -19,7 +20,8 @@
 - Seguir validando el catalogo mock ampliado de Gran Canaria con fuentes geograficas y feedback de pilotos locales.
 - Mejorar la seleccion de puntos cercanos al camino con corredores geoespaciales reales cuando haya persistencia geoespacial.
 - Validar Open-Meteo contra respuestas reales y documentar limites horarios.
-- Integrar METAR/TAF en una fase posterior mediante AviationWeather: METAR/TAF del aeropuerto de salida y de aeropuertos cercanos o alternativos.
+- Ampliar la seleccion de aeropuertos METAR/TAF relevantes mas alla del catalogo mock cuando exista fuente aeroportuaria real.
+- Evaluar reglas explicativas sobre METAR/TAF (viento, techo, visibilidad, fenomenos) sin convertir Flight Discovery en herramienta oficial de planificacion.
 - Evaluar OpenAIP para espacio aereo.
 - Anadir PostGIS cuando haga falta persistencia geoespacial.
 - Mejorar el modelo de aeronaves con autonomia, combustible utilizable, reserva y consumos por fase.

@@ -5,10 +5,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import flightdiscovery.paull.api.recommendation.RecommendationRequest;
 import flightdiscovery.paull.api.recommendation.RecommendedRouteResponse;
@@ -16,6 +19,7 @@ import flightdiscovery.paull.api.recommendation.RouteDurationCategory;
 import flightdiscovery.paull.domain.calculation.RouteCalculationService;
 import flightdiscovery.paull.domain.mock.MockFlightData;
 import flightdiscovery.paull.domain.model.FlightRoute;
+import flightdiscovery.paull.domain.model.RouteAviationWeatherSummary;
 import flightdiscovery.paull.domain.model.RouteType;
 import flightdiscovery.paull.domain.repository.MockAircraftRepository;
 import flightdiscovery.paull.domain.repository.MockAirportRepository;
@@ -32,6 +36,7 @@ class RecommendationServiceTest {
     private final RecommendationTimeService recommendationTimeService = new RecommendationTimeService();
     private final SunExposureService sunExposureService = new SunExposureService();
     private final RouteSimilarityService routeSimilarityService = new RouteSimilarityService(routeCalculationService);
+    private final RouteAviationWeatherService routeAviationWeatherService = aviationWeatherService();
 
     private final RecommendationService recommendationService = new RecommendationService(
             new MockRouteRepository(),
@@ -50,6 +55,7 @@ class RecommendationServiceTest {
             new SightseeingService(sunExposureService),
             sunExposureService,
             new RouteWeatherSummaryService(),
+            routeAviationWeatherService,
             new MockWeatherService()
     );
 
@@ -918,5 +924,19 @@ class RecommendationServiceTest {
         }
 
         return RouteDurationCategory.TOO_LONG;
+    }
+
+    private RouteAviationWeatherService aviationWeatherService() {
+        RouteAviationWeatherService service = Mockito.mock(RouteAviationWeatherService.class);
+        when(service.aviationWeatherSummary(any(), any()))
+                .thenReturn(new RouteAviationWeatherSummary(
+                        "AviationWeather.gov",
+                        "https://aviationweather.gov/data/api/",
+                        false,
+                        List.of(),
+                        List.of()
+                ));
+
+        return service;
     }
 }

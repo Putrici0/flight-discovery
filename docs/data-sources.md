@@ -1,6 +1,6 @@
 # Data Sources
 
-El MVP usa datos mock en memoria por defecto. La unica integracion externa opcional es Open-Meteo para meteorologia orientativa cuando se activa `weather.provider=open-meteo` o cuando la request envia `weatherProvider=open-meteo`.
+El MVP usa datos mock en memoria por defecto. Las integraciones externas actuales son Open-Meteo para meteorologia general orientativa y AviationWeather.gov para METAR/TAF aeroportuario informativo.
 
 ## Datos Actuales
 
@@ -108,6 +108,27 @@ Uso actual:
 - Consultar hasta 3 puntos por ruta: salida, waypoint principal/intermedio y ultimo waypoint antes de volver.
 - Cache en memoria por coordenadas y hora redondeadas.
 - Selector por request: `weatherProvider=open-meteo` para datos reales orientativos o `weatherProvider=mock` para simulacion.
+- Esta meteorologia general alimenta visualizacion, `RouteWeatherSummary` y `weatherScore`; no representa un briefing aeronautico oficial.
+
+### Meteorologia Aeronautica METAR/TAF
+
+Integracion separada mediante AviationWeather.gov Data API:
+
+- Endpoint oficial documentado: `https://aviationweather.gov/api/data/metar?ids=ICAO&format=json` para METAR.
+- Endpoint oficial documentado: `https://aviationweather.gov/api/data/taf?ids=ICAO&format=json` para TAF.
+- Coverage mundial segun la documentacion de AviationWeather.gov, con formatos JSON/raw/XML/otros.
+- La documentacion actual indica limite de 100 requests/minuto, recomienda `User-Agent` propio y avisa de `204 No Content` cuando no hay datos.
+
+Uso actual:
+
+- `AviationWeatherClient` consulta METAR y TAF por codigo ICAO y conserva texto raw junto con campos estructurados.
+- METAR expone observacion reciente, timestamp, edad, categoria de vuelo, viento, visibilidad, altimetro, temperatura, punto de rocio, fenomenos y nubes.
+- TAF expone texto raw, emision, validez, edad y periodos decodificados cuando existen.
+- `RouteAviationWeatherService` consulta el aeropuerto de salida y hasta 2 aeropuertos mock cercanos/relevantes para la ruta.
+- Aeropuertos sin TAF se representan con `tafAvailable=false` y warning, sin romper recomendaciones.
+- Errores de red o ausencia de datos se convierten en warnings de la seccion aeronautica y no afectan al scoring ni bloquean la respuesta.
+- Cache en memoria: METAR 5 minutos y TAF 10 minutos por aeropuerto.
+- Flight Discovery no debe presentarse como sustituto de planificacion/briefing oficial.
 
 ## Integraciones Futuras
 
@@ -120,18 +141,8 @@ Uso actual:
 ### Meteorologia Real
 
 - Open-Meteo ya esta preparado para una primera meteorologia basica orientativa.
-- METAR/TAF para aeropuertos que lo soporten queda para una fase posterior.
+- METAR/TAF ya esta integrado como informacion aeroportuaria separada, sin mezclarse con Open-Meteo ni con `weatherScore`.
 - Reglas de evaluacion de viento, visibilidad, techo y fenomenos relevantes.
-
-### METAR/TAF Roadmap
-
-En una fase posterior se integrara AviationWeather para obtener:
-
-- METAR del aeropuerto de salida.
-- TAF del aeropuerto de salida si existe.
-- METAR/TAF de aeropuertos cercanos o alternativos.
-
-No hay integracion METAR/TAF real en esta fase.
 
 ### Operacion y Seguridad
 

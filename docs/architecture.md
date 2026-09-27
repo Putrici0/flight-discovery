@@ -18,6 +18,7 @@ Capas principales:
 - `flightdiscovery.paull.domain.repository`: repositorios mock en memoria.
 - `flightdiscovery.paull.domain.scoring`: scoring de rutas.
 - `flightdiscovery.paull.domain.weather`: meteorologia mock y proveedor Open-Meteo opcional.
+- `flightdiscovery.paull.domain.aviationweather`: cliente AviationWeather.gov para METAR/TAF, separado de Open-Meteo.
 
 ## Flujo de Recomendacion
 
@@ -34,6 +35,7 @@ Capas principales:
    - `extended`: 100% - 125%.
 8. `RouteCandidateSelectionService` selecciona hasta 80 candidatas buscando variedad de bandas, tipos de ruta y baja similitud entre rutas. Cuando la preferencia no es interinsular, las rutas locales se ordenan por delante de travesias entre islas. El generador conserva tambien variantes inversas de rutas multi-waypoint para que el scoring pueda comparar orientacion solar y visual.
 9. Para cada ruta `RouteWeatherSummaryService` consulta hasta 3 puntos meteorologicos y crea `RouteWeatherSummary`.
+10. `RouteAviationWeatherService` consulta METAR y TAF del aeropuerto de salida y aeropuertos mock cercanos/relevantes. Sus errores se convierten en warnings y no bloquean el scoring ni la respuesta.
 10. `SunExposureService` calcula azimut solar, rumbo de cada tramo, angulo relativo, lado del sol, penalizacion frontal, lado visual recomendado y `orientationScore`.
 10. `RouteScoringService` calcula `weatherScore`, `timeFitScore`, `preferenceScore`, `scenicScore`, `visualOrientationScore`, `costScore` y `totalScore`.
 10. `SightseeingService` calcula tiempo de observacion escenica local, maniobras y `flightPath`.
@@ -74,6 +76,18 @@ La request tambien puede incluir `weatherProvider=mock` o `weatherProvider=open-
 `OpenMeteoWeatherService` consulta forecast horario con latitud, longitud y fecha/hora local planificada. Mantiene cache en memoria usando latitud, longitud y hora redondeadas. Si Open-Meteo falla durante una recomendacion, el servicio cae a datos mock controlados para conservar una respuesta explicable.
 
 `RouteWeatherSummaryService` combina hasta 3 puntos por ruta: salida, waypoint principal/intermedio y ultimo waypoint antes del regreso. Incluye viento medio/maximo, nubosidad media, precipitacion maxima, visibilidad minima, temperatura media, provider e indicador `isMock`.
+
+## METAR/TAF
+
+METAR y TAF se tratan como meteorologia aeronautica aeroportuaria y no se mezclan con `OpenMeteoWeatherService`.
+
+- `AviationWeatherClient` usa la Data API actual de AviationWeather.gov: `/api/data/metar?ids=ICAO&format=json` y `/api/data/taf?ids=ICAO&format=json`.
+- El cliente conserva `rawOb`/`rawTAF` y mapea una representacion estructurada para frontend: timestamps, edad, viento, visibilidad, categoria, nubes y periodos TAF.
+- Cache en memoria por aeropuerto: METAR 5 minutos, TAF 10 minutos.
+- `RouteAviationWeatherService` selecciona el aeropuerto de salida y hasta 2 aeropuertos mock cercanos a puntos de la ruta.
+- Ausencia de TAF, `204 No Content`, respuestas vacias o errores de red terminan como warnings en `RouteAviationWeatherSummary`.
+- `RouteAviationWeatherSummary.operationalUseAllowed=false` deja explicito que la informacion es informativa y no sustituye herramientas oficiales de planificacion.
+- El `weatherScore` sigue viniendo de `RouteWeatherSummary`/Open-Meteo/mock; METAR/TAF no modifican el ranking.
 
 ## Fuel
 
@@ -131,6 +145,7 @@ La API externa no cambia, pero la logica interna se divide en responsabilidades 
 - `SightseeingService`: tiempo de observacion, orbitas escenicas y `flightPath`.
 - `SunExposureService`: azimut solar aproximado, orientacion por tramo, penalizacion frontal, lado visual recomendado y resumen textual.
 - `RouteWeatherSummaryService`: puntos meteorologicos por ruta, fallback y agregado multipunto.
+- `RouteAviationWeatherService`: METAR/TAF aeroportuario separado, cacheado por cliente y con fallback a warnings.
 
 ## Debug
 
@@ -139,6 +154,7 @@ La API externa no cambia, pero la logica interna se divide en responsabilidades 
 - Request recibida.
 - `plannedDepartureDateTime`.
 - Proveedor weather usado y puntos consultados.
+- Resumenes METAR/TAF consultados, aeropuertos incluidos, avisos y casos sin TAF.
 - Tipo/precio/fuente de combustible usados.
 - `targetDurationMinutes`.
 - Avion resuelto.

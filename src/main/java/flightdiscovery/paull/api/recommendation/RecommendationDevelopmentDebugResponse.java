@@ -3,6 +3,7 @@ package flightdiscovery.paull.api.recommendation;
 import java.util.List;
 
 import flightdiscovery.paull.domain.model.Aircraft;
+import flightdiscovery.paull.domain.model.RouteAviationWeatherSummary;
 import flightdiscovery.paull.domain.model.Waypoint;
 
 public record RecommendationDevelopmentDebugResponse(
@@ -11,6 +12,7 @@ public record RecommendationDevelopmentDebugResponse(
         String plannedDepartureDateTime,
         String weatherProviderUsed,
         List<Waypoint> weatherLookupPoints,
+        List<RouteAviationWeatherSummary> aviationWeatherSummaries,
         String fuelTypeUsed,
         double fuelPriceUsed,
         String fuelPriceSource,
