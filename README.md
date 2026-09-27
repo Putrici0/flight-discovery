@@ -63,6 +63,16 @@ El frontend incluye un selector `Meteorologia`:
 - `Open-Meteo real orientativa`: envia `weatherProvider=open-meteo` en la request y usa datos reales orientativos cuando la API responde.
 - `Simulada/mock`: envia `weatherProvider=mock` para desarrollo, demos sin red o fallback controlado.
 
+El mapa incluye una visualizacion meteorologica temporal opcional para la ruta seleccionada:
+
+- Muestrea hasta 5 puntos a lo largo de `flightPath`.
+- Carga datos horarios discretos de Open-Meteo para nubosidad, probabilidad de precipitacion, viento, direccion de viento, visibilidad y temperatura.
+- Interpola visualmente entre horas y entre puntos de ruta; la interfaz lo etiqueta como forecast Open-Meteo interpolado, no como imagen Meteosat/radar.
+- Anade un slider y Play/Pausa para ver desde 60 minutos antes de la salida hasta despues de la duracion estimada.
+- Anima un avion sobre `flightPath` usando `estimatedTimeMinutes`, sin realizar peticiones por frame.
+- Mantiene capas opcionales de ruta, meteorologia, viento, waypoints, sol y avion.
+- Si la hora seleccionada cae dentro de la ventana reciente de RainViewer, superpone una capa de precipitacion radar real con atribucion Leaflet `Weather radar data by RainViewer`; fuera de esa ventana mantiene solo la visualizacion Open-Meteo interpolada.
+
 Ademas, el backend consulta METAR/TAF mediante AviationWeather.gov para mostrar informacion aeronautica aeroportuaria separada:
 
 - METAR: observacion real reciente del aeropuerto de salida y, cuando aplica, aeropuertos mock cercanos/relevantes para la ruta.
@@ -315,6 +325,7 @@ Campos destacados:
 - Tiempo escenico: minutos adicionales explicitos de observacion local sobre puntos de alto interes visual, con limites conservadores por ruta y por waypoint.
 - Tiempo estimado: tiempo base + tiempo escenico.
 - `flightPath`: trayectoria dibujable para el mapa. Incluye aeropuerto, waypoints, regreso y puntos intermedios de orbita cuando hay observacion escenica.
+- La animacion del avion en frontend interpola posicion sobre `flightPath` segun `estimatedTimeMinutes`; es una representacion visual aproximada, no tracking real.
 - `sightseeingManeuvers`: maniobras escenicas explicitas, con waypoint, duracion, radio e instruccion legible.
 - `plannedDepartureDateTime`: fecha y hora local prevista de salida, opcional, en formato `yyyy-MM-ddTHH:mm`. Si no se envia, el backend usa la fecha/hora actual. Se usa para estimar azimut solar y comparar la orientacion de cada tramo.
 - `sunExposureScore`: puntuacion aproximada de exposicion solar. Baja gradualmente cuando una parte significativa de la ruta queda con el sol de frente.
@@ -338,6 +349,7 @@ Campos destacados:
 - Meteorologia por ruta recomendada: ademas del valor meteorologico representativo usado por el scoring, se calcula `routeWeatherSummary` consultando hasta 3 puntos: aeropuerto de salida, primer waypoint como waypoint principal y ultimo waypoint antes de volver. Si hay waypoints repetidos o menos puntos disponibles, se reducen las consultas.
 - `routeWeatherSummary`: agrega viento medio y maximo, nubosidad media, probabilidad maxima de precipitacion, visibilidad minima, temperatura media, `weatherScore`, `provider` e `isMock`.
 - `weatherScore`: se calcula desde el resumen de ruta multi-punto. Penaliza viento alto, precipitacion alta, nubosidad muy alta y visibilidad baja, y siempre se limita a 0-100.
+- La capa meteorologica temporal del frontend no cambia el scoring. Sirve para explorar condiciones estimadas alrededor de `plannedDepartureDateTime` y diferencia visualmente forecast Open-Meteo, datos mock, radar RainViewer real reciente y METAR/TAF aeronautico.
 - METAR/TAF: se consulta mediante AviationWeather.gov para aeropuerto de salida y aeropuertos cercanos/relevantes. Se muestra como informacion aeronautica separada con cache, raw text, estructura util y edad del dato. No modifica `weatherScore`.
 - Scoring: combina `weatherScore`, `timeFitScore`, `preferenceScore`, interes visual, calidad visual/orientacion y coste. Las rutas `inter-island` reciben una penalizacion por defecto salvo preferencia explicita.
 - `timeFitScore`: puntua mejor las rutas cercanas a `targetDurationMinutes`, permite rutas hasta el 125% del tiempo util y descarta el encaje temporal por encima de ese margen.
@@ -359,6 +371,7 @@ El MVP usa datos mock en memoria para:
 - precios mock por aeropuerto y tipo de combustible (`GCLP`, `GCTS`, `GCXO`; `AVGAS_100LL`, `JET_A1`, `MOGAS`)
 - meteorologia simulada por defecto; opcionalmente Open-Meteo con `weather.provider=open-meteo`
 - METAR/TAF real via AviationWeather.gov para aeropuertos soportados por la fuente
+- radar de precipitacion RainViewer solo como capa real reciente en el mapa cuando hay frame temporal compatible
 
 No hay base de datos. Las integraciones externas actuales son Open-Meteo y AviationWeather.gov.
 
@@ -370,7 +383,7 @@ No hay base de datos. Las integraciones externas actuales son Open-Meteo y Aviat
 - Sin validacion aeronautica profesional.
 - Sin navegacion ni planificacion operacional.
 - Catalogo pequeno de aeropuertos, aviones y rutas predefinidas. El catalogo mock de waypoints visuales de Gran Canaria es mas amplio para generar variedad desde GCLP, pero sigue siendo orientativo.
-- Meteorologia mock por defecto; Open-Meteo es opcional y no debe usarse como fuente aeronautica operacional. METAR/TAF se muestra como informacion aeroportuaria, pero Flight Discovery no es una herramienta oficial de planificacion. Precios por aeropuerto simulados/mock salvo precio manual del usuario.
+- Meteorologia mock por defecto; Open-Meteo es opcional y no debe usarse como fuente aeronautica operacional. La visualizacion meteorologica del mapa es forecast/interpolacion salvo cuando se indique explicitamente radar RainViewer reciente. METAR/TAF se muestra como informacion aeroportuaria, pero Flight Discovery no es una herramienta oficial de planificacion. Precios por aeropuerto simulados/mock salvo precio manual del usuario.
 
 ## Proximos Pasos
 

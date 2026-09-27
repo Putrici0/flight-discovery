@@ -2,9 +2,13 @@ import { AfterViewInit, Component, OnDestroy, isDevMode } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CurrencyPipe, DecimalPipe, NgFor, NgIf } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
+import { Subscription } from 'rxjs';
 import * as L from 'leaflet';
 
 import {
+  OpenMeteoForecastResponse,
+  RainViewerFrame,
+  RainViewerManifest,
   RecommendationRequest,
   RecommendationDebugInfo,
   RecommendationService,
@@ -28,6 +32,39 @@ interface AircraftOption {
   fuelType: string;
   maxEnduranceHours: number;
   recommendedReserveMinutes: number;
+}
+
+interface WeatherTimelinePoint {
+  latitude: number;
+  longitude: number;
+  routeRatio: number;
+  temperatureCelsius: number;
+  windKmh: number;
+  windDirectionDegrees: number;
+  cloudCoverPercent: number;
+  precipitationProbability: number;
+  visibilityKm: number;
+}
+
+type WeatherSamplePoint = Omit<
+  WeatherTimelinePoint,
+  'temperatureCelsius' | 'windKmh' | 'windDirectionDegrees' | 'cloudCoverPercent' | 'precipitationProbability' | 'visibilityKm'
+>;
+
+interface WeatherTimelineFrame {
+  time: Date;
+  elapsedMinutes: number;
+  source: 'open-meteo' | 'mock';
+  points: WeatherTimelinePoint[];
+}
+
+interface MapLayerState {
+  route: boolean;
+  weather: boolean;
+  wind: boolean;
+  waypoints: boolean;
+  sun: boolean;
+  aircraft: boolean;
 }
 
 const MOCK_FUEL_PRICES: Record<string, number> = {
@@ -137,8 +174,30 @@ export class AppComponent implements AfterViewInit, OnDestroy {
   protected isLoading = false;
   protected errorMessage = '';
   protected fuelType = AIRCRAFT_OPTIONS[0].fuelType;
+  protected mapLayers: MapLayerState = {
+    route: true,
+    weather: false,
+    wind: false,
+    waypoints: false,
+    sun: false,
+    aircraft: true
+  };
+  protected weatherTimelineFrames: WeatherTimelineFrame[] = [];
+  protected selectedWeatherFrameIndex = 0;
+  protected weatherTimelineLoading = false;
+  protected weatherTimelineError = '';
+  protected timelinePlaying = false;
+  protected mapExpanded = false;
+  protected radarStatus = 'Radar real RainViewer disponible solo para frames recientes.';
 
   private fuelPriceEditedManually = false;
+  private shouldFitMapOnNextRender = true;
+  private weatherTimelineKey = '';
+  private weatherTimelineSubscription?: Subscription;
+  private rainViewerSubscription?: Subscription;
+  private rainViewerManifest?: RainViewerManifest;
+  private rainViewerLayer?: L.TileLayer;
+  private timelineTimer?: number;
 
   private map?: L.Map;
   private readonly routesLayer = L.layerGroup();
@@ -183,6 +242,10 @@ export class AppComponent implements AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.stopTimelinePlayback();
+    this.weatherTimelineSubscription?.unsubscribe();
+    this.rainViewerSubscription?.unsubscribe();
+    this.removeRainViewerLayer();
     this.map?.remove();
   }
 
@@ -192,6 +255,8 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     this.recommendations = [];
     this.debugInfo = undefined;
     this.selectedRouteIndex = 0;
+    this.shouldFitMapOnNextRender = true;
+    this.resetWeatherTimeline();
     this.renderMap();
 
     this.recommendationService.recommend(this.recommendationRequest()).subscribe({
@@ -199,12 +264,15 @@ export class AppComponent implements AfterViewInit, OnDestroy {
         this.recommendations = response.recommendations;
         this.debugInfo = response.debugInfo;
         this.selectedRouteIndex = 0;
+        this.shouldFitMapOnNextRender = true;
+        this.resetWeatherTimeline();
         this.isLoading = false;
         this.renderMap();
       },
       error: (error: HttpErrorResponse) => {
         this.errorMessage = this.resolveErrorMessage(error);
         this.debugInfo = undefined;
+        this.resetWeatherTimeline();
         this.isLoading = false;
         this.renderMap();
       }
@@ -213,7 +281,83 @@ export class AppComponent implements AfterViewInit, OnDestroy {
 
   protected selectRoute(index: number): void {
     this.selectedRouteIndex = index;
+    this.shouldFitMapOnNextRender = true;
+    this.resetWeatherTimeline();
     this.renderMap();
+  }
+
+  protected onMapLayerChanged(): void {
+    this.renderMap();
+  }
+
+  protected toggleMapExpanded(): void {
+    this.mapExpanded = !this.mapExpanded;
+    this.shouldFitMapOnNextRender = true;
+    setTimeout(() => {
+      this.map?.invalidateSize();
+      this.renderMap();
+    }, 0);
+  }
+
+  protected selectedWeatherFrame(): WeatherTimelineFrame | undefined {
+    return this.weatherTimelineFrames[this.selectedWeatherFrameIndex];
+  }
+
+  protected weatherTimelineLabel(): string {
+    const frame = this.selectedWeatherFrame();
+    if (!frame) {
+      return 'Sin datos temporales';
+    }
+
+    const prefix = frame.elapsedMinutes < 0 ? '' : '+';
+    return `${prefix}${Math.round(frame.elapsedMinutes)} min - ${frame.time.toLocaleString([], {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })}`;
+  }
+
+  protected weatherTimelineSourceLabel(): string {
+    const frame = this.selectedWeatherFrame();
+    if (!frame) {
+      return 'La visualizacion se carga al seleccionar una ruta.';
+    }
+
+    if (frame.source === 'mock') {
+      return 'Visualizacion simulada desde weather mock; no es radar ni satelite.';
+    }
+
+    return 'Forecast Open-Meteo horario interpolado espacial y temporalmente; no es imagen Meteosat/radar.';
+  }
+
+  protected onWeatherFrameChanged(value: string | number): void {
+    this.selectedWeatherFrameIndex = Number(value);
+    this.renderMap();
+  }
+
+  protected toggleTimelinePlayback(): void {
+    if (this.timelinePlaying) {
+      this.stopTimelinePlayback();
+      return;
+    }
+
+    if (this.weatherTimelineFrames.length <= 1) {
+      return;
+    }
+
+    if ((this.selectedWeatherFrame()?.elapsedMinutes ?? 0) < 0) {
+      this.selectedWeatherFrameIndex = this.firstDepartureFrameIndex();
+    }
+
+    this.timelinePlaying = true;
+    this.timelineTimer = window.setInterval(() => {
+      this.selectedWeatherFrameIndex = (this.selectedWeatherFrameIndex + 1) % this.weatherTimelineFrames.length;
+      if ((this.selectedWeatherFrame()?.elapsedMinutes ?? 0) < 0) {
+        this.selectedWeatherFrameIndex = this.firstDepartureFrameIndex();
+      }
+      this.renderMap();
+    }, 800);
   }
 
   protected selectedRoute(): RecommendedRoute | undefined {
@@ -371,6 +515,7 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     }
 
     this.routesLayer.clearLayers();
+    this.removeRainViewerLayer();
 
     const departureAirport = this.departureAirport();
 
@@ -381,30 +526,46 @@ export class AppComponent implements AfterViewInit, OnDestroy {
 
     this.addAirportMarker(departureAirport);
 
-    this.recommendations
-      .filter((_, index) => index !== this.selectedRouteIndex)
-      .forEach((route) => this.addRoutePolyline(route, this.routePoints(route, departureAirport), false));
+    if (this.mapLayers.route) {
+      this.recommendations
+        .filter((_, index) => index !== this.selectedRouteIndex)
+        .forEach((route) => this.addRoutePolyline(route, this.routePoints(route, departureAirport), false));
+    }
 
     const selectedRoute = this.selectedRoute();
     if (selectedRoute) {
-      this.addSelectedRoutePath(selectedRoute, departureAirport);
-      this.addSightseeingManeuvers(selectedRoute);
-      this.addWaypointMarkers(selectedRoute);
-      this.addWeatherOverlay(selectedRoute, departureAirport);
-      this.addSunDirection(selectedRoute, departureAirport);
-      this.addFlightDirectionMarkers(selectedRoute, departureAirport);
-      this.addProgressMarkers(selectedRoute, departureAirport);
+      this.ensureWeatherTimeline(selectedRoute, departureAirport);
+      if (this.mapLayers.route) {
+        this.addSelectedRoutePath(selectedRoute, departureAirport);
+        this.addSightseeingManeuvers(selectedRoute);
+      }
+      if (this.mapLayers.waypoints) {
+        this.addWaypointMarkers(selectedRoute);
+      }
+      if (this.mapLayers.weather) {
+        this.addWeatherOverlay(selectedRoute, departureAirport);
+      }
+      if (this.mapLayers.sun) {
+        this.addSunDirection(selectedRoute, departureAirport);
+      }
+      if (this.mapLayers.route) {
+        this.addFlightDirectionMarkers(selectedRoute, departureAirport);
+      }
+    if (this.mapLayers.aircraft) {
+      this.addAnimatedAircraftMarker(selectedRoute, departureAirport);
+    }
     }
 
     const selectedBounds = selectedRoute
       ? this.routeBounds(this.routePoints(selectedRoute, departureAirport))
       : L.latLngBounds([[departureAirport.latitude, departureAirport.longitude]]);
 
-    if (selectedBounds.isValid()) {
+    if (selectedBounds.isValid() && this.shouldFitMapOnNextRender) {
       this.map.fitBounds(selectedBounds, {
         padding: [28, 28],
         maxZoom: 10
       });
+      this.shouldFitMapOnNextRender = false;
     }
 
     setTimeout(() => this.map?.invalidateSize(), 0);
@@ -476,6 +637,13 @@ export class AppComponent implements AfterViewInit, OnDestroy {
   }
 
   private addWeatherOverlay(route: RecommendedRoute, departureAirport: AirportLocation): void {
+    const frame = this.selectedWeatherFrame();
+    if (frame?.points.length) {
+      this.addTemporalWeatherOverlay(route, frame);
+      this.addRainViewerRadarLayer(frame);
+      return;
+    }
+
     const routePoints = this.routePoints(route, departureAirport);
     const midpoint = this.pointAtRouteRatio(routePoints, 0.5);
     if (!midpoint) {
@@ -562,8 +730,8 @@ export class AppComponent implements AfterViewInit, OnDestroy {
           <span class="rain rain-f"></span>
         </div>
       `,
-      iconSize: [188, 126],
-      iconAnchor: [94, 126]
+      iconSize: [118, 78],
+      iconAnchor: [59, 78]
     });
   }
 
@@ -723,7 +891,7 @@ export class AppComponent implements AfterViewInit, OnDestroy {
       L.marker(midpoint, {
         icon: L.divIcon({
           className: 'flight-direction-marker',
-          html: `<span style="transform: rotate(${bearing}deg)">▲</span>`,
+          html: `<span style="transform: rotate(${bearing}deg)">&#9650;</span>`,
           iconSize: [22, 22],
           iconAnchor: [11, 11]
         }),
@@ -734,21 +902,244 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     });
   }
 
-  private addProgressMarkers(route: RecommendedRoute, departureAirport: AirportLocation): void {
+  private addTemporalWeatherOverlay(route: RecommendedRoute, frame: WeatherTimelineFrame): void {
+    frame.points.forEach((point) => {
+      const weatherScore = this.estimatedWeatherScore(point);
+      const color = this.weatherOverlayColor(
+        weatherScore,
+        point.precipitationProbability,
+        point.cloudCoverPercent,
+        point.windKmh,
+        point.visibilityKm
+      );
+      const radius = 1800
+        + Math.min(4200, point.cloudCoverPercent * 18 + point.precipitationProbability * 34 + point.windKmh * 36);
+      const popupText = this.weatherTimelinePopupText(route, frame, point);
+
+      L.circle([point.latitude, point.longitude], {
+        radius,
+        color,
+        weight: 1,
+        opacity: 0.42,
+        fillColor: color,
+        fillOpacity: 0.035 + Math.min(0.10, point.cloudCoverPercent / 900)
+      })
+        .bindPopup(popupText)
+        .addTo(this.routesLayer);
+
+      L.marker([point.latitude, point.longitude], {
+        icon: this.weatherVisualIcon(
+          route,
+          point.windKmh,
+          point.precipitationProbability,
+          point.cloudCoverPercent,
+          point.visibilityKm,
+          weatherScore
+        ),
+        zIndexOffset: 610
+      })
+        .bindPopup(popupText)
+        .addTo(this.routesLayer);
+
+      if (this.mapLayers.wind) {
+        this.addWindMarker(point, popupText);
+      }
+    });
+  }
+
+  private addWindMarker(point: WeatherTimelinePoint, popupText: string): void {
+    L.marker([point.latitude, point.longitude], {
+      icon: L.divIcon({
+        className: 'wind-vector-marker',
+        html: `<span style="transform: rotate(${(point.windDirectionDegrees + 180) % 360}deg)">&uarr;</span><strong>${Math.round(point.windKmh)}</strong>`,
+        iconSize: [46, 42],
+        iconAnchor: [23, 21]
+      }),
+      zIndexOffset: 620
+    })
+      .bindPopup(`${popupText}<br>Flecha: direccion aproximada hacia donde sopla el viento.`)
+      .addTo(this.routesLayer);
+  }
+
+  private addRainViewerRadarLayer(frame: WeatherTimelineFrame): void {
+    if (!this.map || frame.source !== 'open-meteo') {
+      return;
+    }
+
+    if (!this.rainViewerManifest) {
+      this.loadRainViewerManifest();
+      return;
+    }
+
+    const radarFrame = this.closestRainViewerFrame(frame.time);
+    if (!radarFrame) {
+      this.radarStatus = 'Sin radar RainViewer para esta hora; se muestra visualizacion Open-Meteo interpolada.';
+      return;
+    }
+
+    const url = `${this.rainViewerManifest.host}${radarFrame.path}/256/{z}/{x}/{y}/2/1_1.png`;
+    this.rainViewerLayer = L.tileLayer(url, {
+      opacity: 0.38,
+      attribution: 'Weather radar data by RainViewer',
+      maxNativeZoom: 7,
+      zIndex: 350
+    }).addTo(this.map);
+    this.radarStatus = 'Capa de precipitacion radar real RainViewer para frame reciente; resto de variables son forecast Open-Meteo.';
+  }
+
+  private loadRainViewerManifest(): void {
+    if (this.rainViewerSubscription) {
+      return;
+    }
+
+    this.rainViewerSubscription = this.recommendationService.rainViewerManifest().subscribe({
+      next: (manifest) => {
+        this.rainViewerManifest = manifest;
+        this.rainViewerSubscription = undefined;
+        this.renderMap();
+      },
+      error: () => {
+        this.rainViewerSubscription = undefined;
+        this.radarStatus = 'No se pudo cargar RainViewer; se mantiene la visualizacion Open-Meteo interpolada.';
+      }
+    });
+  }
+
+  private closestRainViewerFrame(time: Date): RainViewerFrame | null {
+    const frames = [
+      ...(this.rainViewerManifest?.radar?.past ?? []),
+      ...(this.rainViewerManifest?.radar?.nowcast ?? [])
+    ];
+    if (!frames.length) {
+      return null;
+    }
+
+    let closestFrame: RainViewerFrame | null = null;
+    let closestDistance = Number.MAX_SAFE_INTEGER;
+    const targetSeconds = Math.round(time.getTime() / 1000);
+    frames.forEach((frame) => {
+      const distance = Math.abs(frame.time - targetSeconds);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestFrame = frame;
+      }
+    });
+
+    return closestDistance <= 30 * 60 ? closestFrame : null;
+  }
+
+  private removeRainViewerLayer(): void {
+    if (this.map && this.rainViewerLayer) {
+      this.map.removeLayer(this.rainViewerLayer);
+    }
+    this.rainViewerLayer = undefined;
+  }
+
+  private weatherTimelinePopupText(route: RecommendedRoute, frame: WeatherTimelineFrame, point: WeatherTimelinePoint): string {
+    const source = frame.source === 'mock'
+      ? 'mock simulado'
+      : 'Open-Meteo forecast interpolado';
+    return `Meteo visual ruta: ${Math.round(this.estimatedWeatherScore(point))}/100<br>`
+      + `Hora: ${frame.time.toLocaleString()}<br>`
+      + `Punto ruta: ${Math.round(point.routeRatio * 100)}%<br>`
+      + `Viento: ${Math.round(point.windKmh)} km/h desde ${Math.round(point.windDirectionDegrees)} grados<br>`
+      + `Precipitacion: ${Math.round(point.precipitationProbability)}%<br>`
+      + `Nubosidad: ${Math.round(point.cloudCoverPercent)}%<br>`
+      + `Visibilidad: ${Math.round(point.visibilityKm)} km<br>`
+      + `Fuente visual: ${source}<br>`
+      + `METAR/TAF: separado, solo en panel aeronautico.`;
+  }
+
+  private estimatedWeatherScore(point: WeatherTimelinePoint): number {
+    const windScore = 100 - Math.min(100, point.windKmh / 45 * 100);
+    const cloudScore = point.cloudCoverPercent <= 55
+      ? 100 - Math.abs(point.cloudCoverPercent - 30) * 0.7
+      : 82.5 - (point.cloudCoverPercent - 55) * 1.5;
+    const precipitationScore = 100 - point.precipitationProbability * 1.35;
+    const visibilityScore = point.visibilityKm >= 20 ? 100 : Math.max(0, point.visibilityKm / 20 * 100);
+
+    return Math.max(0, Math.min(100, windScore * 0.3 + cloudScore * 0.2 + precipitationScore * 0.3 + visibilityScore * 0.2));
+  }
+
+  private addAnimatedAircraftMarker(route: RecommendedRoute, departureAirport: AirportLocation): void {
     const points = this.routePoints(route, departureAirport);
-    [0.25, 0.5, 0.75].forEach((ratio) => {
-      const point = this.pointAtRouteRatio(points, ratio);
-      if (!point) {
-        return;
+    const frame = this.selectedWeatherFrame();
+    const elapsedMinutes = frame ? Math.max(0, Math.min(route.estimatedTimeMinutes, frame.elapsedMinutes)) : 0;
+    const ratio = route.estimatedTimeMinutes <= 0 ? 0 : elapsedMinutes / route.estimatedTimeMinutes;
+    const point = this.pointAtRouteRatio(points, ratio);
+    if (!point) {
+      return;
+    }
+
+    const nextPoint = this.pointAtRouteRatio(points, Math.min(1, ratio + 0.01)) ?? point;
+    const bearing = this.bearing(point, nextPoint);
+    const trailPoints = this.routeProgressPoints(points, ratio);
+
+    if (trailPoints.length > 1) {
+      L.polyline(trailPoints, {
+        color: '#ea580c',
+        weight: 8,
+        opacity: 0.82,
+        lineCap: 'round',
+        lineJoin: 'round'
+      })
+        .bindPopup(`Tramo recorrido estimado: +${Math.round(elapsedMinutes)} min`)
+        .addTo(this.routesLayer);
+    }
+
+    L.marker(point, {
+      icon: L.divIcon({
+        className: 'animated-aircraft-marker',
+        html: `
+          <span class="aircraft-halo">
+            <span class="aircraft-bearing" style="transform: rotate(${bearing}deg)">
+              <span class="aircraft-nose"></span>
+              <span class="aircraft-wing aircraft-wing-left"></span>
+              <span class="aircraft-wing aircraft-wing-right"></span>
+              <span class="aircraft-tail"></span>
+            </span>
+          </span>
+        `,
+        iconSize: [72, 72],
+        iconAnchor: [36, 36]
+      }),
+      zIndexOffset: 2000
+    })
+      .bindPopup(`Avion estimado +${Math.round(elapsedMinutes)} min de ${Math.round(route.estimatedTimeMinutes)} min`)
+      .addTo(this.routesLayer);
+  }
+
+  private routeProgressPoints(points: L.LatLngExpression[], ratio: number): L.LatLngExpression[] {
+    if (points.length === 0) {
+      return [];
+    }
+
+    const clampedRatio = Math.max(0, Math.min(1, ratio));
+    const latLngs = points.map((point) => L.latLng(point));
+    const segmentDistances = latLngs.slice(1).map((point, index) => latLngs[index].distanceTo(point));
+    const totalDistance = segmentDistances.reduce((total, distance) => total + distance, 0);
+    let targetDistance = totalDistance * clampedRatio;
+    const progressPoints: L.LatLngExpression[] = [[latLngs[0].lat, latLngs[0].lng]];
+
+    for (let index = 0; index < segmentDistances.length; index++) {
+      const segmentDistance = segmentDistances[index];
+      if (targetDistance >= segmentDistance) {
+        progressPoints.push([latLngs[index + 1].lat, latLngs[index + 1].lng]);
+        targetDistance -= segmentDistance;
+        continue;
       }
 
-      const elapsedMinutes = Math.round(route.estimatedTimeMinutes * ratio);
-      L.marker(point, {
-        icon: this.aircraftProgressIcon
-      })
-        .bindPopup(`Posicion estimada +${elapsedMinutes} min`)
-        .addTo(this.routesLayer);
-    });
+      const start = latLngs[index];
+      const end = latLngs[index + 1];
+      const segmentRatio = segmentDistance === 0 ? 0 : targetDistance / segmentDistance;
+      progressPoints.push([
+        start.lat + (end.lat - start.lat) * segmentRatio,
+        start.lng + (end.lng - start.lng) * segmentRatio
+      ]);
+      break;
+    }
+
+    return progressPoints;
   }
 
   private pointAtRouteRatio(points: L.LatLngExpression[], ratio: number): L.LatLngExpression | null {
@@ -877,6 +1268,229 @@ export class AppComponent implements AfterViewInit, OnDestroy {
     })
       .bindPopup(`${airport.code} - ${airport.name}`)
       .addTo(this.routesLayer);
+  }
+
+  private ensureWeatherTimeline(route: RecommendedRoute, departureAirport: AirportLocation): void {
+    const key = this.weatherTimelineCacheKey(route, departureAirport);
+    if (this.weatherTimelineKey === key || this.weatherTimelineLoading) {
+      return;
+    }
+
+    this.weatherTimelineKey = key;
+    this.weatherTimelineFrames = [];
+    this.selectedWeatherFrameIndex = 0;
+    this.weatherTimelineError = '';
+
+    if (route.weatherIsMock || route.routeWeatherSummary?.isMock || this.weatherProviderLabel(route) === 'mock') {
+      this.weatherTimelineFrames = this.mockWeatherTimeline(route, departureAirport);
+      return;
+    }
+
+    const samplePoints = this.weatherSamplePoints(route, departureAirport);
+    const departureTime = this.departureTime(route);
+    const endTime = new Date(departureTime.getTime() + (route.estimatedTimeMinutes + 90) * 60_000);
+    const startTime = new Date(departureTime.getTime() - 90 * 60_000);
+    this.weatherTimelineLoading = true;
+    this.weatherTimelineSubscription?.unsubscribe();
+    this.weatherTimelineSubscription = this.recommendationService.weatherForecast(
+      samplePoints.map((point) => point.latitude),
+      samplePoints.map((point) => point.longitude),
+      this.isoDateOnly(startTime),
+      this.isoDateOnly(endTime)
+    ).subscribe({
+      next: (response) => {
+        const forecasts = Array.isArray(response) ? response : [response];
+        this.weatherTimelineFrames = this.openMeteoWeatherTimeline(route, departureAirport, forecasts);
+        this.weatherTimelineLoading = false;
+        this.renderMap();
+      },
+      error: () => {
+        this.weatherTimelineError = 'No se pudo cargar la evolucion Open-Meteo; se mantiene el resumen meteorologico de ruta.';
+        this.weatherTimelineLoading = false;
+        this.renderMap();
+      }
+    });
+  }
+
+  private resetWeatherTimeline(): void {
+    this.stopTimelinePlayback();
+    this.weatherTimelineSubscription?.unsubscribe();
+    this.weatherTimelineSubscription = undefined;
+    this.weatherTimelineKey = '';
+    this.weatherTimelineFrames = [];
+    this.selectedWeatherFrameIndex = 0;
+    this.weatherTimelineLoading = false;
+    this.weatherTimelineError = '';
+    this.radarStatus = 'Radar real RainViewer disponible solo para frames recientes.';
+    this.removeRainViewerLayer();
+  }
+
+  private stopTimelinePlayback(): void {
+    if (this.timelineTimer !== undefined) {
+      window.clearInterval(this.timelineTimer);
+    }
+    this.timelineTimer = undefined;
+    this.timelinePlaying = false;
+  }
+
+  private weatherTimelineCacheKey(route: RecommendedRoute, departureAirport: AirportLocation): string {
+    return [
+      route.id,
+      route.plannedDepartureDateTime ?? this.form.plannedDepartureDateTime,
+      route.estimatedTimeMinutes,
+      this.weatherProviderLabel(route),
+      departureAirport.code
+    ].join(':');
+  }
+
+  private openMeteoWeatherTimeline(
+    route: RecommendedRoute,
+    departureAirport: AirportLocation,
+    forecasts: OpenMeteoForecastResponse[]
+  ): WeatherTimelineFrame[] {
+    const samplePoints = this.weatherSamplePoints(route, departureAirport);
+    const departureTime = this.departureTime(route);
+
+    return this.timelineElapsedMinutes(route).map((elapsedMinutes) => {
+      const frameTime = new Date(departureTime.getTime() + elapsedMinutes * 60_000);
+      return {
+        time: frameTime,
+        elapsedMinutes,
+        source: 'open-meteo',
+        points: samplePoints.map((samplePoint, index) => this.openMeteoPointAtTime(
+          samplePoint,
+          forecasts[Math.min(index, forecasts.length - 1)],
+          frameTime
+        ))
+      };
+    });
+  }
+
+  private mockWeatherTimeline(route: RecommendedRoute, departureAirport: AirportLocation): WeatherTimelineFrame[] {
+    const samplePoints = this.weatherSamplePoints(route, departureAirport);
+    const departureTime = this.departureTime(route);
+    const baseWind = route.routeWeatherSummary?.averageWindKmh ?? route.windKmh ?? 12;
+    const baseCloud = route.routeWeatherSummary?.averageCloudCoverPercent ?? route.cloudCoverPercent ?? 30;
+    const basePrecipitation = route.routeWeatherSummary?.maxPrecipitationProbability ?? route.precipitationProbability ?? 5;
+    const baseVisibility = route.routeWeatherSummary?.minVisibilityKm ?? route.visibilityKm ?? 30;
+    const baseTemperature = route.routeWeatherSummary?.averageTemperatureCelsius ?? route.temperatureCelsius ?? 22;
+
+    return this.timelineElapsedMinutes(route).map((elapsedMinutes) => {
+      const frameTime = new Date(departureTime.getTime() + elapsedMinutes * 60_000);
+      return {
+        time: frameTime,
+        elapsedMinutes,
+        source: 'mock',
+        points: samplePoints.map((samplePoint, index) => {
+          const phase = elapsedMinutes / Math.max(route.estimatedTimeMinutes, 1) + index * 0.35;
+          return {
+            ...samplePoint,
+            temperatureCelsius: this.round(baseTemperature + Math.sin(phase) * 1.2),
+            windKmh: this.round(Math.max(0, baseWind + Math.sin(phase * 1.7) * 4)),
+            windDirectionDegrees: (70 + index * 38 + elapsedMinutes * 0.8) % 360,
+            cloudCoverPercent: this.clampPercent(baseCloud + Math.sin(phase * 1.2) * 16),
+            precipitationProbability: this.clampPercent(basePrecipitation + Math.max(0, Math.sin(phase * 1.5)) * 18),
+            visibilityKm: this.round(Math.max(1, baseVisibility - Math.max(0, Math.sin(phase * 1.5)) * 5))
+          };
+        })
+      };
+    });
+  }
+
+  private openMeteoPointAtTime(samplePoint: WeatherSamplePoint, forecast: OpenMeteoForecastResponse, time: Date): WeatherTimelinePoint {
+    const hourly = forecast.hourly;
+    const interpolation = this.hourlyInterpolation(hourly.time, time);
+
+    return {
+      ...samplePoint,
+      temperatureCelsius: this.interpolateHourly(hourly.temperature_2m, interpolation, 22),
+      windKmh: this.interpolateHourly(hourly.wind_speed_10m, interpolation, 12),
+      windDirectionDegrees: this.interpolateHourly(hourly.wind_direction_10m, interpolation, 0),
+      cloudCoverPercent: this.clampPercent(this.interpolateHourly(hourly.cloud_cover, interpolation, 30)),
+      precipitationProbability: this.clampPercent(this.interpolateHourly(hourly.precipitation_probability, interpolation, 0)),
+      visibilityKm: this.round(this.interpolateHourly(hourly.visibility, interpolation, 10000) / 1000)
+    };
+  }
+
+  private hourlyInterpolation(times: string[], time: Date): { startIndex: number; endIndex: number; ratio: number } {
+    if (!times?.length) {
+      return { startIndex: 0, endIndex: 0, ratio: 0 };
+    }
+
+    const target = time.getTime();
+    const parsedTimes = times.map((value) => new Date(value).getTime());
+    for (let index = 0; index < parsedTimes.length - 1; index++) {
+      if (target >= parsedTimes[index] && target <= parsedTimes[index + 1]) {
+        const span = parsedTimes[index + 1] - parsedTimes[index];
+        return {
+          startIndex: index,
+          endIndex: index + 1,
+          ratio: span <= 0 ? 0 : (target - parsedTimes[index]) / span
+        };
+      }
+    }
+
+    const closestIndex = parsedTimes.reduce((closest, value, index) => (
+      Math.abs(value - target) < Math.abs(parsedTimes[closest] - target) ? index : closest
+    ), 0);
+    return { startIndex: closestIndex, endIndex: closestIndex, ratio: 0 };
+  }
+
+  private interpolateHourly(
+    values: number[] | undefined,
+    interpolation: { startIndex: number; endIndex: number; ratio: number },
+    fallback: number
+  ): number {
+    if (!values?.length) {
+      return fallback;
+    }
+
+    const start = values[interpolation.startIndex] ?? fallback;
+    const end = values[interpolation.endIndex] ?? start;
+    return this.round(start + (end - start) * interpolation.ratio);
+  }
+
+  private weatherSamplePoints(route: RecommendedRoute, departureAirport: AirportLocation): WeatherSamplePoint[] {
+    const points = this.routePoints(route, departureAirport);
+    return [0.15, 0.5, 0.85]
+      .map((routeRatio) => {
+        const point = this.pointAtRouteRatio(points, routeRatio);
+        return point ? { latitude: L.latLng(point).lat, longitude: L.latLng(point).lng, routeRatio } : null;
+      })
+      .filter((point): point is WeatherSamplePoint => point !== null);
+  }
+
+  private timelineElapsedMinutes(route: RecommendedRoute): number[] {
+    const stepMinutes = route.estimatedTimeMinutes > 120 ? 2 : 1;
+    const endMinute = Math.ceil((route.estimatedTimeMinutes + 60) / stepMinutes) * stepMinutes;
+    const minutes: number[] = [];
+    for (let minute = -60; minute <= endMinute; minute += stepMinutes) {
+      minutes.push(minute);
+    }
+
+    return minutes;
+  }
+
+  private departureTime(route: RecommendedRoute): Date {
+    return new Date(route.plannedDepartureDateTime ?? this.form.plannedDepartureDateTime);
+  }
+
+  private isoDateOnly(date: Date): string {
+    const offsetMilliseconds = date.getTimezoneOffset() * 60_000;
+    return new Date(date.getTime() - offsetMilliseconds).toISOString().slice(0, 10);
+  }
+
+  private clampPercent(value: number): number {
+    return this.round(Math.max(0, Math.min(100, value)));
+  }
+
+  private round(value: number): number {
+    return Math.round(value * 100) / 100;
+  }
+
+  private firstDepartureFrameIndex(): number {
+    const index = this.weatherTimelineFrames.findIndex((frame) => frame.elapsedMinutes >= 0);
+    return index >= 0 ? index : 0;
   }
 
   private resolveErrorMessage(error: HttpErrorResponse): string {

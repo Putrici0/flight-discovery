@@ -110,6 +110,21 @@ Uso actual:
 - Selector por request: `weatherProvider=open-meteo` para datos reales orientativos o `weatherProvider=mock` para simulacion.
 - Esta meteorologia general alimenta visualizacion, `RouteWeatherSummary` y `weatherScore`; no representa un briefing aeronautico oficial.
 
+Visualizacion temporal del mapa:
+
+- El frontend muestrea puntos discretos sobre `flightPath` y solicita Open-Meteo una vez por ruta seleccionada para el rango temporal alrededor de `plannedDepartureDateTime`.
+- Variables usadas: nubosidad, probabilidad de precipitacion, viento, direccion de viento, visibilidad y temperatura.
+- La reproduccion del mapa no realiza peticiones por frame; usa los datos horarios cargados e interpolacion visual.
+- La interfaz etiqueta estos datos como forecast Open-Meteo interpolado o mock simulado. No se describe como Meteosat, satelite ni radar.
+- La animacion del avion interpola posicion sobre `flightPath` segun `estimatedTimeMinutes`; es una ayuda visual aproximada.
+
+Radar publico:
+
+- RainViewer Weather Maps API se usa como capa opcional de precipitacion radar real solo si el frame temporal del mapa cae dentro de su ventana reciente.
+- RainViewer publica `https://api.rainviewer.com/public/weather-maps.json` con host, rutas de tiles y frames radar recientes.
+- La capa lleva atribucion visible mediante Leaflet: `Weather radar data by RainViewer`.
+- Si no hay frame compatible, error de red o la hora planificada esta fuera de la ventana reciente, no se finge radar: se mantiene la visualizacion Open-Meteo interpolada.
+
 ### Meteorologia Aeronautica METAR/TAF
 
 Integracion separada mediante AviationWeather.gov Data API:
@@ -142,6 +157,7 @@ Uso actual:
 
 - Open-Meteo ya esta preparado para una primera meteorologia basica orientativa.
 - METAR/TAF ya esta integrado como informacion aeroportuaria separada, sin mezclarse con Open-Meteo ni con `weatherScore`.
+- RainViewer queda integrado solo como precipitacion radar real reciente en el mapa, no como forecast completo ni como fuente de nubosidad/viento.
 - Reglas de evaluacion de viento, visibilidad, techo y fenomenos relevantes.
 
 ### Operacion y Seguridad

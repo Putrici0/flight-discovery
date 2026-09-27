@@ -119,14 +119,130 @@ select:focus {
 }
 
 .map-panel {
+  position: relative;
   overflow: hidden;
   padding: 0;
 }
 
 .route-map {
   width: 100%;
-  height: clamp(320px, 42vh, 520px);
-  min-height: 320px;
+  height: clamp(420px, 56vh, 680px);
+  min-height: 420px;
+}
+
+.map-panel.expanded {
+  position: fixed;
+  inset: 16px;
+  z-index: 1000;
+  border-radius: 8px;
+}
+
+.map-panel.expanded .route-map {
+  height: calc(100vh - 32px);
+  min-height: 0;
+}
+
+.map-size-toggle {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 720;
+  min-height: 34px;
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  border-radius: 6px;
+  padding: 0 12px;
+  color: #174a48;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.14);
+  font-size: 0.82rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.map-controls {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  left: 12px;
+  z-index: 700;
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.16);
+}
+
+.layer-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.layer-toggles label {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  min-height: 26px;
+  border: 1px solid #d0d8e0;
+  border-radius: 999px;
+  padding: 2px 7px;
+  color: #344054;
+  background: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.layer-toggles input {
+  width: auto;
+  min-height: 0;
+  margin: 0;
+}
+
+.timeline-control {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.timeline-control button {
+  min-height: 30px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 12px;
+  color: #ffffff;
+  background: #1f6f6d;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.timeline-control button:disabled {
+  background: #98a2b3;
+  cursor: not-allowed;
+}
+
+.timeline-control input {
+  min-height: 28px;
+  padding: 0;
+}
+
+.timeline-control strong {
+  color: #14213d;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.timeline-source {
+  margin: 0;
+  color: #475467;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.timeline-source.error {
+  color: #b42318;
 }
 
 .results-panel {
@@ -592,6 +708,114 @@ dd {
   font-weight: 900;
 }
 
+.animated-aircraft-marker {
+  pointer-events: auto;
+}
+
+.aircraft-halo {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 999px;
+  background: rgba(249, 115, 22, 0.24);
+  box-shadow:
+    0 0 0 9px rgba(249, 115, 22, 0.14),
+    0 12px 28px rgba(15, 23, 42, 0.3);
+  animation: aircraftPulse 1.8s ease-in-out infinite;
+}
+
+.aircraft-bearing {
+  position: relative;
+  display: block;
+  width: 46px;
+  height: 46px;
+  border: 3px solid #ffffff;
+  border-radius: 999px;
+  background: #dc2626;
+  box-shadow:
+    0 8px 22px rgba(15, 23, 42, 0.48),
+    0 0 0 2px rgba(127, 29, 29, 0.24);
+  transform-origin: center;
+}
+
+.aircraft-nose {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-right: 8px solid transparent;
+  border-bottom: 19px solid #ffffff;
+  border-left: 8px solid transparent;
+  transform: translateX(-50%);
+}
+
+.aircraft-wing {
+  position: absolute;
+  top: 21px;
+  width: 18px;
+  height: 8px;
+  background: #ffffff;
+}
+
+.aircraft-wing-left {
+  left: 5px;
+  border-radius: 8px 2px 2px 8px;
+  transform: rotate(-22deg);
+}
+
+.aircraft-wing-right {
+  right: 5px;
+  border-radius: 2px 8px 8px 2px;
+  transform: rotate(22deg);
+}
+
+.aircraft-tail {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  width: 9px;
+  height: 13px;
+  border-radius: 999px;
+  background: #ffffff;
+  transform: translateX(-50%);
+}
+
+.wind-vector-marker {
+  display: grid;
+  place-items: center;
+}
+
+.wind-vector-marker span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(15, 23, 42, 0.26);
+  border-radius: 999px;
+  color: #174a48;
+  background: rgba(236, 253, 245, 0.9);
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.18);
+  font-size: 17px;
+  font-weight: 900;
+  line-height: 1;
+  transform-origin: center;
+}
+
+.wind-vector-marker strong {
+  display: block;
+  width: 30px;
+  margin: 2px auto 0;
+  border-radius: 999px;
+  color: #174a48;
+  background: rgba(255, 255, 255, 0.92);
+  text-align: center;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);
+}
+
 .flight-direction-marker span {
   display: grid;
   place-items: center;
@@ -627,8 +851,8 @@ dd {
 
 .weather-scene {
   position: relative;
-  width: 188px;
-  height: 126px;
+  width: 118px;
+  height: 78px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.58);
   border-radius: 8px;
@@ -641,9 +865,9 @@ dd {
 
 .weather-glow {
   position: absolute;
-  inset: 12px 18px auto auto;
-  width: 34px;
-  height: 34px;
+  inset: 8px 12px auto auto;
+  width: 22px;
+  height: 22px;
   border-radius: 999px;
   background: rgba(251, 191, 36, 0.8);
   box-shadow: 0 0 26px rgba(251, 191, 36, 0.7);
@@ -652,37 +876,37 @@ dd {
 .cloud {
   position: absolute;
   display: block;
-  height: 25px;
+  height: 16px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.86);
   box-shadow:
-    18px -10px 0 4px rgba(255, 255, 255, 0.88),
-    39px -5px 0 7px rgba(255, 255, 255, 0.82),
-    58px 2px 0 2px rgba(255, 255, 255, 0.78),
+    12px -7px 0 3px rgba(255, 255, 255, 0.88),
+    25px -3px 0 5px rgba(255, 255, 255, 0.82),
+    38px 2px 0 1px rgba(255, 255, 255, 0.78),
     0 10px 16px rgba(15, 23, 42, 0.16);
   opacity: 0.82;
   animation: cloudDrift 9s linear infinite;
 }
 
 .cloud-a {
-  top: 31px;
-  left: 12px;
-  width: 76px;
+  top: 20px;
+  left: 8px;
+  width: 48px;
 }
 
 .cloud-b {
-  top: 58px;
-  left: 82px;
-  width: 64px;
+  top: 36px;
+  left: 52px;
+  width: 42px;
   transform: scale(0.86);
   animation-duration: 12s;
   animation-delay: -5s;
 }
 
 .cloud-c {
-  top: 16px;
-  left: 118px;
-  width: 52px;
+  top: 12px;
+  left: 74px;
+  width: 34px;
   transform: scale(0.72);
   animation-duration: 15s;
   animation-delay: -8s;
@@ -710,18 +934,18 @@ dd {
 .cloud-heavy .cloud {
   background: rgba(226, 232, 240, 0.9);
   box-shadow:
-    18px -10px 0 4px rgba(226, 232, 240, 0.9),
-    39px -5px 0 7px rgba(203, 213, 225, 0.88),
-    58px 2px 0 2px rgba(203, 213, 225, 0.82),
+    12px -7px 0 3px rgba(226, 232, 240, 0.9),
+    25px -3px 0 5px rgba(203, 213, 225, 0.88),
+    38px 2px 0 1px rgba(203, 213, 225, 0.82),
     0 10px 16px rgba(15, 23, 42, 0.2);
 }
 
 .rain {
   position: absolute;
   display: block;
-  top: 68px;
+  top: 43px;
   width: 2px;
-  height: 28px;
+  height: 18px;
   border-radius: 999px;
   background: rgba(37, 99, 235, 0.72);
   opacity: 0;
@@ -730,31 +954,31 @@ dd {
 }
 
 .rain-a {
-  left: 48px;
+  left: 30px;
 }
 
 .rain-b {
-  left: 69px;
+  left: 43px;
   animation-delay: -0.15s;
 }
 
 .rain-c {
-  left: 91px;
+  left: 57px;
   animation-delay: -0.35s;
 }
 
 .rain-d {
-  left: 113px;
+  left: 71px;
   animation-delay: -0.5s;
 }
 
 .rain-e {
-  left: 134px;
+  left: 84px;
   animation-delay: -0.25s;
 }
 
 .rain-f {
-  left: 154px;
+  left: 96px;
   animation-delay: -0.65s;
 }
 
@@ -772,7 +996,7 @@ dd {
 
 .rain-heavy .rain {
   width: 3px;
-  height: 34px;
+  height: 22px;
   opacity: 0.82;
   animation-duration: 0.58s;
 }
@@ -783,9 +1007,9 @@ dd {
 
 .wind {
   position: absolute;
-  left: -38px;
+  left: -24px;
   display: block;
-  width: 54px;
+  width: 34px;
   height: 2px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.78);
@@ -794,12 +1018,12 @@ dd {
 }
 
 .wind-a {
-  top: 96px;
+  top: 60px;
 }
 
 .wind-b {
-  top: 108px;
-  width: 42px;
+  top: 68px;
+  width: 28px;
   animation-delay: -1.8s;
 }
 
@@ -852,7 +1076,7 @@ dd {
   }
 
   100% {
-    transform: translateY(32px) rotate(14deg);
+    transform: translateY(22px) rotate(14deg);
   }
 }
 
@@ -862,14 +1086,28 @@ dd {
   }
 
   100% {
-    transform: translateX(260px);
+    transform: translateX(164px);
+  }
+}
+
+@keyframes aircraftPulse {
+  0%,
+  100% {
+    transform: scale(0.94);
+    opacity: 0.92;
+  }
+
+  50% {
+    transform: scale(1.04);
+    opacity: 1;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .cloud,
   .rain,
-  .wind {
+  .wind,
+  .aircraft-halo {
     animation: none;
   }
 }

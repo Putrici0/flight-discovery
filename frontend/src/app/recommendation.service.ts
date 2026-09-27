@@ -217,11 +217,76 @@ export interface RecommendationDebugInfo {
   aviationWeatherWarnings?: number;
 }
 
+export interface OpenMeteoForecastResponse {
+  latitude: number;
+  longitude: number;
+  hourly: {
+    time: string[];
+    temperature_2m?: number[];
+    wind_speed_10m?: number[];
+    wind_direction_10m?: number[];
+    cloud_cover?: number[];
+    precipitation_probability?: number[];
+    visibility?: number[];
+  };
+}
+
+export interface RainViewerManifest {
+  host: string;
+  generated: number;
+  radar?: {
+    past?: RainViewerFrame[];
+    nowcast?: RainViewerFrame[];
+  };
+}
+
+export interface RainViewerFrame {
+  time: number;
+  path: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class RecommendationService {
   constructor(private readonly http: HttpClient) {}
 
   recommend(request: RecommendationRequest): Observable<RecommendationResponse> {
     return this.http.post<RecommendationResponse>('/api/recommendations', request);
+  }
+
+  weatherForecast(
+    latitudes: number[],
+    longitudes: number[],
+    startDate: string,
+    endDate: string
+  ): Observable<OpenMeteoForecastResponse | OpenMeteoForecastResponse[]> {
+    const latitude = latitudes.map((value) => value.toFixed(4)).join(',');
+    const longitude = longitudes.map((value) => value.toFixed(4)).join(',');
+    const hourly = [
+      'temperature_2m',
+      'wind_speed_10m',
+      'wind_direction_10m',
+      'cloud_cover',
+      'precipitation_probability',
+      'visibility'
+    ].join(',');
+
+    return this.http.get<OpenMeteoForecastResponse | OpenMeteoForecastResponse[]>(
+      'https://api.open-meteo.com/v1/forecast',
+      {
+        params: {
+          latitude,
+          longitude,
+          hourly,
+          wind_speed_unit: 'kmh',
+          timezone: 'auto',
+          start_date: startDate,
+          end_date: endDate
+        }
+      }
+    );
+  }
+
+  rainViewerManifest(): Observable<RainViewerManifest> {
+    return this.http.get<RainViewerManifest>('https://api.rainviewer.com/public/weather-maps.json');
   }
 }

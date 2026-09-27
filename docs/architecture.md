@@ -77,6 +77,8 @@ La request tambien puede incluir `weatherProvider=mock` o `weatherProvider=open-
 
 `RouteWeatherSummaryService` combina hasta 3 puntos por ruta: salida, waypoint principal/intermedio y ultimo waypoint antes del regreso. Incluye viento medio/maximo, nubosidad media, precipitacion maxima, visibilidad minima, temperatura media, provider e indicador `isMock`.
 
+El frontend anade una visualizacion meteorologica temporal separada del scoring. Para la ruta seleccionada muestrea `flightPath`, solicita Open-Meteo una vez para un rango alrededor de `plannedDepartureDateTime`, interpola los datos horarios en el slider/Play y etiqueta la capa como forecast/interpolacion. Si hay frames RainViewer cercanos a la hora mostrada, superpone precipitacion radar real con atribucion; si no, no presenta radar. METAR/TAF sigue separado como informacion aeroportuaria y no alimenta esta capa visual.
+
 ## METAR/TAF
 
 METAR y TAF se tratan como meteorologia aeronautica aeroportuaria y no se mezclan con `OpenMeteoWeatherService`.

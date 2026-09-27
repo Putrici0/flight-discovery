@@ -156,8 +156,69 @@
     </form>
 
     <section class="results-area">
-      <div class="panel map-panel">
+      <div class="panel map-panel" [class.expanded]="mapExpanded">
+        <button class="map-size-toggle" type="button" (click)="toggleMapExpanded()">
+          {{ mapExpanded ? 'Mapa compacto' : 'Mapa grande' }}
+        </button>
         <div id="route-map" class="route-map" aria-label="Mapa de rutas recomendadas"></div>
+        <div class="map-controls" *ngIf="selectedRoute()">
+          <div class="layer-toggles" aria-label="Capas del mapa">
+            <label>
+              <input type="checkbox" [(ngModel)]="mapLayers.route" (ngModelChange)="onMapLayerChanged()" name="layerRoute">
+              Ruta
+            </label>
+            <label>
+              <input type="checkbox" [(ngModel)]="mapLayers.weather" (ngModelChange)="onMapLayerChanged()" name="layerWeather">
+              Meteorologia
+            </label>
+            <label>
+              <input type="checkbox" [(ngModel)]="mapLayers.wind" (ngModelChange)="onMapLayerChanged()" name="layerWind">
+              Viento
+            </label>
+            <label>
+              <input type="checkbox" [(ngModel)]="mapLayers.waypoints" (ngModelChange)="onMapLayerChanged()" name="layerWaypoints">
+              Waypoints
+            </label>
+            <label>
+              <input type="checkbox" [(ngModel)]="mapLayers.sun" (ngModelChange)="onMapLayerChanged()" name="layerSun">
+              Sol
+            </label>
+            <label>
+              <input type="checkbox" [(ngModel)]="mapLayers.aircraft" (ngModelChange)="onMapLayerChanged()" name="layerAircraft">
+              Avion
+            </label>
+          </div>
+
+          <div class="timeline-control">
+            <button
+              type="button"
+              (click)="toggleTimelinePlayback()"
+              [disabled]="weatherTimelineFrames.length <= 1"
+            >
+              {{ timelinePlaying ? 'Pausa' : 'Play' }}
+            </button>
+            <input
+              type="range"
+              min="0"
+              [max]="weatherTimelineFrames.length ? weatherTimelineFrames.length - 1 : 0"
+              step="1"
+              [ngModel]="selectedWeatherFrameIndex"
+              (ngModelChange)="onWeatherFrameChanged($event)"
+              name="weatherTimeline"
+              [disabled]="weatherTimelineFrames.length <= 1"
+            >
+            <strong>{{ weatherTimelineLabel() }}</strong>
+          </div>
+
+          <p class="timeline-source" *ngIf="weatherTimelineLoading">Cargando evolucion meteorologica...</p>
+          <p class="timeline-source error" *ngIf="weatherTimelineError">{{ weatherTimelineError }}</p>
+          <p class="timeline-source">
+            {{ weatherTimelineSourceLabel() }} {{ radarStatus }}
+          </p>
+          <p class="timeline-source" *ngIf="!mapLayers.weather">
+            Modo limpio: la meteorologia visual esta oculta. Activala con su capa cuando quieras compararla con la ruta.
+          </p>
+        </div>
       </div>
 
       <section class="panel results-panel">
